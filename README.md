@@ -1,13 +1,13 @@
 # vtools: A set of video tools
 
-## 1. videntropy.py
+## 1. vtools-entropy.py
 
 This tool calculates the difference of every pair of consecutive frames in a video file. The difference is measured as both MSE ([Mean Squared Error](https://en.wikipedia.org/wiki/Mean_squared_error)) and the logarithm in base 10 of the MSW. The goal is to allow finding videos that repeat frames. 
 
 Example:
 
 ```
-$ ./python/videntropy.py input.mjpeg.mkv 
+$ ./python/vtools-entropy.py input.mjpeg.mkv 
 frame1,frame2,mse,log10_mse
 0,1,0.00012605369709156177,-3.8994444121619263
 1,2,4.7327327728271485e-05,-4.324888016673559
@@ -50,7 +50,7 @@ consecutive frames", and white to represent "maximum difference".
 
 
 ```
-$ ./python/videntropy.py --dump-file /tmp/diff.mp4 input.mjpeg.mkv
+$ ./python/vtools-entropy.py --dump-file /tmp/diff.mp4 input.mjpeg.mkv
 ...
 ```
 
