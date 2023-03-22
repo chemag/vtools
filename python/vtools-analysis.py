@@ -26,6 +26,7 @@ FILTER_CHOICES = {
 default_values = {
     "debug": 0,
     "dry_run": False,
+    "add_mse": True,
     "filter": "analyze",
     "infile": None,
     "outfile": None,
@@ -63,6 +64,7 @@ def run_video_filter(options):
     analysis_results = []
     prev_timestamp = video_capture.get(cv2.CAP_PROP_POS_MSEC)
     prev_img = None
+    frame_num = 0
     while True:
         # get image
         ret, img = video_capture.read()
@@ -70,41 +72,42 @@ def run_video_filter(options):
             break
         # process image
         if options.filter == "analyze":
+            tpl = (frame_num,)
             # get timestamps
             timestamp = video_capture.get(cv2.CAP_PROP_POS_MSEC)
             delta_timestamp = timestamp - prev_timestamp
-            # get mse
-            diff_msey, diff_mseu, diff_msev = calculate_diff_mse(img, prev_img)
-            analysis_results.append(
-                (timestamp, delta_timestamp, diff_msey, diff_mseu, diff_msev)
-            )
-
-        # update previous info
-        prev_timestamp = timestamp
-        prev_img = img
+            tpl += (timestamp, delta_timestamp)
+            if options.add_mse:
+                # get mse
+                diff_msey, diff_mseu, diff_msev = calculate_diff_mse(img, prev_img)
+                tpl += (diff_msey, diff_mseu, diff_msev)
+            analysis_results.append(tpl)
+            # update previous info
+            prev_timestamp = timestamp
+            prev_img = img
+        frame_num += 1
 
     # release the video objects
     video_capture.release()
     if options.filter == "analyze":
         with open(options.outfile, "w") as fd:
-            fd.write(
-                f"frame_num,timestamp,delta_timestamp,log10_msey,diff_msey,diff_mseu,diff_msev\n"
-            )
-            for frame_num, (
-                ts,
-                delta_timestamp,
-                diff_msey,
-                diff_mseu,
-                diff_msev,
-            ) in enumerate(analysis_results):
-                log10_msey = (
-                    None
-                    if diff_msey is None
-                    else (math.log10(diff_msey) if diff_msey != 0.0 else "-inf")
-                )
-                fd.write(
-                    f"{frame_num},{ts},{delta_timestamp},{log10_msey},{diff_msey},{diff_mseu},{diff_msev}\n"
-                )
+            fd.write("frame_num,timestamp,delta_timestamp")
+            if options.add_mse:
+                fd.write(",log10_msey,diff_msey,diff_mseu,diff_msev")
+            fd.write("\n")
+            for vals in analysis_results:
+                frame_num, ts, delta_timestamp = vals[:3]
+                if options.add_mse:
+                    diff_msey, diff_mseu, diff_msev = vals[3:]
+                    log10_msey = (
+                        None
+                        if diff_msey is None
+                        else (math.log10(diff_msey) if diff_msey != 0.0 else "-inf")
+                    )
+                fd.write(f"{frame_num},{ts},{delta_timestamp}")
+                if options.add_mse:
+                    fd.write(f",{log10_msey},{diff_msey},{diff_mseu},{diff_msev}")
+                fd.write("\n")
 
 
 def get_options(argv):
@@ -151,6 +154,21 @@ def get_options(argv):
         dest="dry_run",
         default=default_values["dry_run"],
         help="Dry run",
+    )
+    parser.add_argument(
+        "--add-mse",
+        dest="add_mse",
+        action="store_true",
+        default=default_values["add_mse"],
+        help="Add inter-frame MSE values to frame analysis%s"
+        % (" [default]" if default_values["add_mse"] else ""),
+    )
+    parser.add_argument(
+        "--noadd-mse",
+        dest="add_mse",
+        action="store_false",
+        help="Add inter-frame MSE values to frame analysis%s"
+        % (" [default]" if not default_values["add_mse"] else ""),
     )
     parser.add_argument(
         "--filter",
