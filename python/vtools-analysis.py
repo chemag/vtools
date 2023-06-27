@@ -80,12 +80,23 @@ def run_video_filter(options):
             if options.add_mse:
                 # get mse
                 diff_msey, diff_mseu, diff_msev = calculate_diff_mse(img, prev_img)
-                tpl += (diff_msey, diff_mseu, diff_msev)
+                log10_msey = (
+                    None
+                    if diff_msey is None
+                    else (math.log10(diff_msey) if diff_msey != 0.0 else "-inf")
+                )
+                tpl += (log10_msey, diff_msey, diff_mseu, diff_msev)
             analysis_results.append(tpl)
             # update previous info
             prev_timestamp = timestamp
             prev_img = img
         frame_num += 1
+
+    # get the tuple keys
+    if options.filter == "frames":
+        tpl_keys = ("frame_num", "timestamp", "delta_timestamp")
+        if options.add_mse:
+            tpl_keys += ("log10_msey", "diff_msey", "diff_mseu", "diff_msev")
 
     # release the video objects
     video_capture.release()
@@ -93,23 +104,10 @@ def run_video_filter(options):
     # calculate the output
     if options.filter == "frames":
         with open(options.outfile, "w") as fd:
-            fd.write("frame_num,timestamp,delta_timestamp")
-            if options.add_mse:
-                fd.write(",log10_msey,diff_msey,diff_mseu,diff_msev")
-            fd.write("\n")
+            # write the header
+            fd.write(",".join(tpl_keys) + "\n")
             for vals in analysis_results:
-                frame_num, ts, delta_timestamp = vals[:3]
-                if options.add_mse:
-                    diff_msey, diff_mseu, diff_msev = vals[3:]
-                    log10_msey = (
-                        None
-                        if diff_msey is None
-                        else (math.log10(diff_msey) if diff_msey != 0.0 else "-inf")
-                    )
-                fd.write(f"{frame_num},{ts},{delta_timestamp}")
-                if options.add_mse:
-                    fd.write(f",{log10_msey},{diff_msey},{diff_mseu},{diff_msev}")
-                fd.write("\n")
+                fd.write(",".join(str(v) for v in vals) + "\n")
 
 
 def get_options(argv):
