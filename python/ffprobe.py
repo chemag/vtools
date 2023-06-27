@@ -16,6 +16,7 @@ def run_ffprobe_command(infile, **kwargs):
     ffprobe_bin = kwargs.get("ffprobe", "ffprobe")
     debug = kwargs.get("debug", 0)
     add_qp = kwargs.get("add_qp", False)
+    add_mb_type = kwargs.get("add_mb_type", False)
     command = f"{ffprobe_bin}"
     if stream_id is not None:
         command += f"-select_streams {stream_id}"
@@ -23,6 +24,8 @@ def run_ffprobe_command(infile, **kwargs):
     command += " -count_frames -show_frames"
     if add_qp:
         command += " -debug qp"
+    elif add_mb_type:
+        command += " -debug mb_type"
     command += f" {infile}"
     returncode, out, err = run(command, debug=debug)
     assert returncode == 0, f'error running "{command}"'
@@ -55,6 +58,24 @@ def get_frames_qp_information(infile, **kwargs):
     # sort the frames
     qp_vals = sort_frames(qp_keys, qp_vals, "frame_num")
     return qp_keys, qp_vals
+
+
+def get_frames_mb_information(infile, **kwargs):
+    debug = kwargs.get("debug", 0)
+    out, err = run_ffprobe_command(infile, add_mb_type=True, **kwargs)
+    # parse the output
+    ffprobe_keys, ffprobe_vals = parse_ffprobe_frames_output(out, debug)
+    mb_keys, mb_vals = parse_mb_information(err, debug)
+    # join the output
+    # ensure the same number of frames in both sources
+    assert len(ffprobe_vals) == len(mb_vals), f"error: ffprobe produced {len(ffprobe_vals)} frames while MB-type produced {len(mb_vals)} frames"
+    # assume same order for both lists
+    # keep only the first field ("frame_num") from the ffprobe list
+    mb_keys = ffprobe_keys[:1] + mb_keys[3:]
+    mb_vals = [v1[:1] + v2[3:] for (v1, v2) in zip(ffprobe_vals, mb_vals)]
+    # sort the frames
+    mb_vals = sort_frames(mb_keys, mb_vals, "frame_num")
+    return mb_keys, mb_vals
 
 
 def parse_ffprobe_frames_output(out, debug):
@@ -261,3 +282,144 @@ def parse_qp_information(out, debug):
         qp_list = []
 
     return qp_keys, qp_vals
+
+
+MB_TYPE_LIST = [
+    "P",  # IS_PCM(mb_type)  // MB_TYPE_INTRA_PCM
+    "A",  # IS_INTRA(mb_type) && IS_ACPRED(mb_type)  // MB_TYPE_ACPRED
+    "i",  # IS_INTRA4x4(mb_type)  // MB_TYPE_INTRA4x4
+    "I",  # IS_INTRA16x16(mb_type)  // MB_TYPE_INTRA16x16
+    "d",  # IS_DIRECT(mb_type) && IS_SKIP(mb_type)
+    "D",  # IS_DIRECT(mb_type)  // MB_TYPE_DIRECT2
+    "g",  # IS_GMC(mb_type) && IS_SKIP(mb_type)
+    "G",  # IS_GMC(mb_type)  // MB_TYPE_GMC
+    "S",  # IS_SKIP(mb_type)  // MB_TYPE_SKIP
+    ">",  # !USES_LIST(mb_type, 1)
+    "<",  # !USES_LIST(mb_type, 0)
+    "X",  # av_assert2(USES_LIST(mb_type, 0) && USES_LIST(mb_type, 1))
+]
+
+# simplified types
+MB_STYPE_DICT = {
+    "intra": [
+        "A",
+        "i",
+        "I",
+    ],
+    "intra_pcm": [
+        "P",
+    ],
+    "inter": [
+        "<",
+        ">",
+    ],
+    "skip_direct": [
+        "S",
+        "d",
+        "D",
+    ],
+    "other": [
+        "X",
+    ],
+    "gmc": [
+        "g",
+        "G",
+    ],
+}
+
+
+def parse_mb_information(out, debug):
+    mb_vals = []
+    frame_num = -1
+    resolution = None
+    pix_fmt = None
+    pict_type = None
+    mb_dict = {}
+
+    reinit_pattern = (
+        r"\[[^\]]+\] Reinit context to (?P<resolution>\d+x\d+), "
+        r"pix_fmt: (?P<pix_fmt>.+)"
+    )
+    newframe_pattern = r"\[[^\]]+\] New frame, type: (?P<pict_type>.+)"
+    mb_pattern = r"\[[^\]]+\] (?P<mb_str>[PAiIdDgGS><X+\-|= ]+)$"
+
+    mb_only_keys = [f"mb_type_{mb_type}" for mb_type in MB_TYPE_LIST]
+    mb_only_keys += [f"mb_stype_{mb_stype}" for mb_stype in MB_STYPE_DICT]
+    mb_keys = ["frame_num", "pix_fmt", "pict_type"]
+    mb_keys += mb_only_keys
+
+    for line in out.splitlines():
+        try:
+            line = line.decode("ascii").strip()
+        except UnicodeDecodeError:
+            # ignore the line
+            continue
+        if "Reinit context to" in line:
+            # [h264 @ 0x30d1a80] Reinit context to 1280x720, pix_fmt: yuv420p
+            match = re.search(reinit_pattern, line)
+            if not match:
+                print(f'warning: invalid reinit line ("{line}")')
+                sys.exit(-1)
+            # reinit: flush all previous data
+            resolution = match.group("resolution")
+            pix_fmt = match.group("pix_fmt")
+            mb_vals = []
+            frame_num = -1
+            mb_dict = {}
+
+        elif "New frame, type:" in line:
+            # [h264 @ 0x30d1a80] New frame, type: I
+            match = re.search(newframe_pattern, line)
+            if not match:
+                print(f'warning: invalid newframe line ("{line}")')
+                sys.exit(-1)
+            # store the old frame info
+            if frame_num != -1:
+                mb_list = mb_dict_convert(mb_only_keys, mb_dict)
+                mb_vals.append([frame_num, pix_fmt, pict_type, *mb_list])
+                mb_dict = {}
+            # new frame
+            pict_type = match.group("pict_type")
+            frame_num += 1
+        else:
+            # "[h264 @ ...] S  S  S  S  S  >- S  S  S  S  S  S  >  S  S  S  "
+            match = re.search(mb_pattern, line)
+            if not match:
+                # print(f'error: invalid line: {line}')
+                continue
+            mb_str = match.group("mb_str")
+            # make sure mb_str length is a multiple of 3
+            while (len(mb_str) % 3) != 0:
+                mb_str += " "
+            mb_row_list = [mb_str[i: i + 1] for i in range(0, len(mb_str), 3)]
+            row_mb_dict = {mb_type: mb_row_list.count(mb_type) for mb_type in mb_row_list}
+            for k, v in row_mb_dict.items():
+                mb_dict[k] = (mb_dict[k] if k in mb_dict else 0) + v
+
+    # dump the last state
+    if mb_dict:
+        mb_list = mb_dict_convert(mb_only_keys, mb_dict)
+        mb_vals.append([frame_num, pix_fmt, pict_type, *mb_list])
+        mb_dict = {}
+
+    return mb_keys, mb_vals
+
+
+def mb_dict_convert(mb_only_keys, mb_dict):
+    mb_info = {}
+    # 1. read the mb_dict
+    for mb_type in MB_TYPE_LIST:
+        mb_info[f"mb_type_{mb_type}"] = mb_dict.get(mb_type, 0) / sum(
+            mb_dict.values()
+        )
+    # 2. add derived values
+    for mb_stype in MB_STYPE_DICT.keys():
+        mb_info[f"mb_stype_{mb_stype}"] = 0
+    for mb_stype, mb_type_list in MB_STYPE_DICT.items():
+        for mb_type in mb_type_list:
+            mb_info[f"mb_stype_{mb_stype}"] += mb_info[f"mb_type_{mb_type}"]
+    # 3. convert to mb_list
+    mb_list = []
+    for key in mb_only_keys:
+        mb_list.append(mb_info[key])
+    return mb_list

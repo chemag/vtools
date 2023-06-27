@@ -30,6 +30,7 @@ default_values = {
     "add_mse": False,
     "add_ffprobe_frames": False,
     "add_qp": False,
+    "add_mb_type": False,
     "filter": "frames",
     "infile": None,
     "outfile": None,
@@ -140,6 +141,19 @@ def run_frame_analysis(options):
             # assume frame_num-sorted lists
             keys = keys + qp_keys[1:]
             vals = [v1 + v2[1:] for (v1, v2) in zip(vals, qp_vals)]
+
+    if options.add_mb_type:
+        mb_keys, mb_vals = ffprobe.get_frames_mb_information(options.infile, debug=options.debug)
+        if not keys and not vals:
+            keys, vals = mb_keys, mb_vals
+        else:
+            # join the 2x sources of information
+            # ensure the same number of frames in both sources
+            assert len(mb_vals) == len(vals), f"error: ffprobe-mb produced {len(mb_vals)} frames while previously produced {len(vals)} frames"
+            # join by frame_num in both lists
+            # assume frame_num-sorted lists
+            keys = keys + mb_keys[1:]
+            vals = [v1 + v2[1:] for (v1, v2) in zip(vals, mb_vals)]
 
     # calculate the output
     with open(options.outfile, "w") as fd:
@@ -255,6 +269,23 @@ def get_options(argv):
         const=False,
         help="Do not add QP columns (min, max, mean, var)%s"
         % (" [default]" if not default_values["add_qp"] else ""),
+    )
+    parser.add_argument(
+        "--add-mb-type",
+        action="store_const",
+        default=default_values["add_mb_type"],
+        dest="add_mb_type",
+        const=True,
+        help="Add MB type columns%s"
+        % (" [default]" if default_values["add_mb_type"] else ""),
+    )
+    parser.add_argument(
+        "--noadd-mb-type",
+        action="store_const",
+        dest="add_mb_type",
+        const=False,
+        help="Do not add MB type columns%s"
+        % (" [default]" if not default_values["add_mb_type"] else ""),
     )
     parser.add_argument(
         "--filter",
