@@ -20,14 +20,14 @@ DEFAULT_NOISE_LEVEL = 50
 
 FILTER_CHOICES = {
     "help": "show help options",
-    "analyze": "analyze file",
+    "frames": "per-frame analysis",
 }
 
 default_values = {
     "debug": 0,
     "dry_run": False,
     "add_mse": False,
-    "filter": "analyze",
+    "filter": "frames",
     "infile": None,
     "outfile": None,
 }
@@ -71,7 +71,7 @@ def run_video_filter(options):
         if not ret:
             break
         # process image
-        if options.filter == "analyze":
+        if options.filter == "frames":
             tpl = (frame_num,)
             # get timestamps
             timestamp = video_capture.get(cv2.CAP_PROP_POS_MSEC)
@@ -89,7 +89,9 @@ def run_video_filter(options):
 
     # release the video objects
     video_capture.release()
-    if options.filter == "analyze":
+
+    # calculate the output
+    if options.filter == "frames":
         with open(options.outfile, "w") as fd:
             fd.write("frame_num,timestamp,delta_timestamp")
             if options.add_mse:
