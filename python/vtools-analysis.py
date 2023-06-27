@@ -26,7 +26,7 @@ FILTER_CHOICES = {
 default_values = {
     "debug": 0,
     "dry_run": False,
-    "add_mse": True,
+    "add_mse": False,
     "filter": "analyze",
     "infile": None,
     "outfile": None,
