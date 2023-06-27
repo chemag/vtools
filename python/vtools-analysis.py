@@ -12,9 +12,9 @@ import argparse
 import cv2
 import math
 import numpy as np
-import os
 import sys
 
+import ffprobe
 
 DEFAULT_NOISE_LEVEL = 50
 
@@ -26,7 +26,9 @@ FILTER_CHOICES = {
 default_values = {
     "debug": 0,
     "dry_run": False,
+    "add_opencv_analysis": True,
     "add_mse": False,
+    "add_ffprobe_frames": False,
     "filter": "frames",
     "infile": None,
     "outfile": None,
@@ -45,12 +47,12 @@ def calculate_diff_mse(img, prev_img):
     return list(diff_mse)
 
 
-def run_video_filter(options):
+def run_opencv_analysis(infile, add_mse, debug):
     # open the input
     # use "0" to capture from the camera
-    video_capture = cv2.VideoCapture(options.infile)
+    video_capture = cv2.VideoCapture(infile)
     if not video_capture.isOpened():
-        print(f"error: {options.infile = } is not open")
+        print(f"error: {infile = } is not open")
         sys.exit(-1)
     width = int(video_capture.get(cv2.CAP_PROP_FRAME_WIDTH))
     height = int(video_capture.get(cv2.CAP_PROP_FRAME_HEIGHT))
@@ -58,11 +60,12 @@ def run_video_filter(options):
     size = (width, height)
     fourcc_input = int(video_capture.get(cv2.CAP_PROP_FOURCC))
     fps = video_capture.get(cv2.CAP_PROP_FPS)
-    print(f"input: {options.infile = } {size = } {fourcc_input = } {fps = }")
+    if debug > 0:
+        print(f"input: {infile = } {size = } {fourcc_input = } {fps = }")
 
     # process the input
-    analysis_results = []
-    prev_timestamp = video_capture.get(cv2.CAP_PROP_POS_MSEC)
+    opencv_vals = []
+    prev_timestamp_ms = video_capture.get(cv2.CAP_PROP_POS_MSEC)
     prev_img = None
     frame_num = 0
     while True:
@@ -71,43 +74,65 @@ def run_video_filter(options):
         if not ret:
             break
         # process image
-        if options.filter == "frames":
-            tpl = (frame_num,)
-            # get timestamps
-            timestamp = video_capture.get(cv2.CAP_PROP_POS_MSEC)
-            delta_timestamp = timestamp - prev_timestamp
-            tpl += (timestamp, delta_timestamp)
-            if options.add_mse:
-                # get mse
-                diff_msey, diff_mseu, diff_msev = calculate_diff_mse(img, prev_img)
-                log10_msey = (
-                    None
-                    if diff_msey is None
-                    else (math.log10(diff_msey) if diff_msey != 0.0 else "-inf")
-                )
-                tpl += (log10_msey, diff_msey, diff_mseu, diff_msev)
-            analysis_results.append(tpl)
-            # update previous info
-            prev_timestamp = timestamp
-            prev_img = img
+        val = [frame_num, ]
+        # get timestamps
+        timestamp_ms = video_capture.get(cv2.CAP_PROP_POS_MSEC)
+        delta_timestamp_ms = timestamp_ms - prev_timestamp_ms
+        val += [timestamp_ms, delta_timestamp_ms]
+        if add_mse:
+            # get mse
+            diff_msey, diff_mseu, diff_msev = calculate_diff_mse(img, prev_img)
+            log10_msey = (
+                None
+                if diff_msey is None
+                else (math.log10(diff_msey) if diff_msey != 0.0 else "-inf")
+            )
+            val += [log10_msey, diff_msey, diff_mseu, diff_msev]
+        opencv_vals.append(val)
+        # update previous info
+        prev_timestamp_ms = timestamp_ms
+        prev_img = img
         frame_num += 1
 
     # get the tuple keys
-    if options.filter == "frames":
-        tpl_keys = ("frame_num", "timestamp", "delta_timestamp")
-        if options.add_mse:
-            tpl_keys += ("log10_msey", "diff_msey", "diff_mseu", "diff_msev")
+    opencv_keys = ["frame_num", "timestamp_ms", "delta_timestamp_ms"]
+    if add_mse:
+        opencv_keys += ["log10_msey", "diff_msey", "diff_mseu", "diff_msev"]
 
     # release the video objects
     video_capture.release()
 
+    return opencv_keys, opencv_vals
+
+
+def run_frame_analysis(options):
+    keys, vals = [], []
+
+    # run the opencv analysis
+    if options.add_opencv_analysis:
+        opencv_keys, opencv_vals = run_opencv_analysis(options.infile, options.add_mse, options.debug)
+        keys, vals = opencv_keys, opencv_vals
+
+    # add other sources of information
+    if options.add_ffprobe_frames:
+        ffprobe_keys, ffprobe_vals = ffprobe.get_frames_information(options.infile, debug=options.debug)
+        if not keys and not vals:
+            keys, vals = ffprobe_keys, ffprobe_vals
+        else:
+            # join the 2x sources of information
+            # ensure the same number of frames in both sources
+            assert len(ffprobe_vals) == len(vals), f"error: ffprobe produced {len(ffprobe_vals)} frames while previously produced {len(vals)} frames"
+            # join by frame_num in both lists
+            # assume frame_num-sorted lists
+            keys = keys + ffprobe_keys[1:]
+            vals = [v1 + v2[1:] for (v1, v2) in zip(vals, ffprobe_vals)]
+
     # calculate the output
-    if options.filter == "frames":
-        with open(options.outfile, "w") as fd:
-            # write the header
-            fd.write(",".join(tpl_keys) + "\n")
-            for vals in analysis_results:
-                fd.write(",".join(str(v) for v in vals) + "\n")
+    with open(options.outfile, "w") as fd:
+        # write the header
+        fd.write(",".join(keys) + "\n")
+        for val in vals:
+            fd.write(",".join(str(v) for v in val) + "\n")
 
 
 def get_options(argv):
@@ -156,6 +181,21 @@ def get_options(argv):
         help="Dry run",
     )
     parser.add_argument(
+        "--add-opencv-analysis",
+        dest="add_opencv_analysis",
+        action="store_true",
+        default=default_values["add_opencv_analysis"],
+        help="Add opencv frame values to frame analysis%s"
+        % (" [default]" if default_values["add_opencv_analysis"] else ""),
+    )
+    parser.add_argument(
+        "--noadd-opencv-analysis",
+        dest="add_opencv_analysis",
+        action="store_false",
+        help="Add opencv frame values to frame analysis%s"
+        % (" [default]" if not default_values["add_opencv_analysis"] else ""),
+    )
+    parser.add_argument(
         "--add-mse",
         dest="add_mse",
         action="store_true",
@@ -169,6 +209,21 @@ def get_options(argv):
         action="store_false",
         help="Add inter-frame MSE values to frame analysis%s"
         % (" [default]" if not default_values["add_mse"] else ""),
+    )
+    parser.add_argument(
+        "--add-ffprobe-frames",
+        dest="add_ffprobe_frames",
+        action="store_true",
+        default=default_values["add_ffprobe_frames"],
+        help="Add ffprobe frame values to frame analysis%s"
+        % (" [default]" if default_values["add_ffprobe_frames"] else ""),
+    )
+    parser.add_argument(
+        "--noadd-ffprobe-frames",
+        dest="add_ffprobe_frames",
+        action="store_false",
+        help="Add ffprobe frame values to frame analysis%s"
+        % (" [default]" if not default_values["add_ffprobe_frames"] else ""),
     )
     parser.add_argument(
         "--filter",
@@ -201,6 +256,9 @@ def get_options(argv):
     options = parser.parse_args(argv[1:])
     if options.version:
         return options
+    # force analysis coherence
+    if options.add_mse:
+        options.add_opencv_analysis = True
     return options
 
 
@@ -216,7 +274,7 @@ def main(argv):
     if options.debug > 0:
         print(options)
 
-    run_video_filter(options)
+    run_frame_analysis(options)
 
 
 if __name__ == "__main__":
