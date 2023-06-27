@@ -6,6 +6,10 @@ import subprocess
 import sys
 
 
+class InvalidCommand(Exception):
+    pass
+
+
 def run(command, **kwargs):
     debug = kwargs.get("debug", 0)
     dry_run = kwargs.get("dry_run", False)
