@@ -4,32 +4,65 @@
 
 
 import json
+import numpy as np
+import re
+import sys
 
 from common import run
 
 
-def get_frames_information(infile, **kwargs):
+def run_ffprobe_command(infile, **kwargs):
     stream_id = kwargs.get("stream_id", None)
     ffprobe_bin = kwargs.get("ffprobe", "ffprobe")
     debug = kwargs.get("debug", 0)
+    add_qp = kwargs.get("add_qp", False)
     command = f"{ffprobe_bin}"
     if stream_id is not None:
         command += f"-select_streams {stream_id}"
     command += " -print_format json"
-    command += f" -count_frames -show_frames {infile}"
+    command += " -count_frames -show_frames"
+    if add_qp:
+        command += " -debug qp"
+    command += f" {infile}"
     returncode, out, err = run(command, debug=debug)
     assert returncode == 0, f'error running "{command}"'
+    return out, err
+
+
+def get_frames_information(infile, **kwargs):
+    debug = kwargs.get("debug", 0)
+    out, err = run_ffprobe_command(infile, **kwargs)
     # parse the output
-    return parse_ffprobe_frames_output(out, debug)
+    keys, vals = parse_ffprobe_frames_output(out, debug)
+    # sort the frames
+    vals = sort_frames(keys, vals, "frame_num")
+    return keys, vals
+
+
+def get_frames_qp_information(infile, **kwargs):
+    debug = kwargs.get("debug", 0)
+    out, err = run_ffprobe_command(infile, add_qp=True, **kwargs)
+    # parse the output
+    ffprobe_keys, ffprobe_vals = parse_ffprobe_frames_output(out, debug)
+    qp_keys, qp_vals = parse_qp_information(err, debug)
+    # join the output
+    # ensure the same number of frames in both sources
+    assert len(ffprobe_vals) == len(qp_vals), f"error: ffprobe produced {len(ffprobe_vals)} frames while QP produced {len(qp_vals)} frames"
+    # assume same order for both lists
+    # keep only the first field ("frame_num") from the ffprobe list
+    qp_keys = ffprobe_keys[:1] + qp_keys[3:]
+    qp_vals = [v1[:1] + v2[3:] for (v1, v2) in zip(ffprobe_vals, qp_vals)]
+    # sort the frames
+    qp_vals = sort_frames(qp_keys, qp_vals, "frame_num")
+    return qp_keys, qp_vals
 
 
 def parse_ffprobe_frames_output(out, debug):
     frame_dict = parse_ffprobe_output(out, debug)
     # punt if more than 1
     assert len(frame_dict.keys()) == 1, f"error: video contains {len(frame_dict.keys())} video streams"
-    frame_list = list(frame_dict.values())[0]
-    # add derived values
-    return frame_list
+    keys, vals = list(frame_dict.values())[0]
+    return keys, vals
 
 
 PREFERRED_KEY_ORDER = [
@@ -114,19 +147,7 @@ def parse_ffprobe_output(out, debug):
         # store the frame
         video_frames[stream_index].append(frame)
 
-    # sort the frames by frame_num
-    new_video_frames = {}
-    for stream_id in video_frames:
-        # sort the corresponding video frames (using deco sort)
-        # 1. decorate the list
-        deco = [(frame["frame_num"], frame) for frame in video_frames[stream_id]]
-        # 2. sort the decorated list
-        deco.sort()
-        # 3. undecorate the list
-        new_video_frames[stream_id] = [frame for _, frame in deco]
-
     # ensure all the frames have the same keys
-    video_frames = new_video_frames
     new_video_frames = {}
     for stream_id in video_frames:
         ffprobe_keys = (list(frame.keys()) for frame in video_frames[stream_id])
@@ -152,3 +173,91 @@ def parse_ffprobe_output(out, debug):
         new_video_frames[stream_id] = (ffprobe_keys, ffprobe_vals)
 
     return new_video_frames
+
+
+def sort_frames(keys, vals, field_name):
+    # sort the frames by <field_name> (using deco sort)
+    field_name_index = keys.index(field_name)
+    # 1. decorate the list
+    deco = [(val[field_name_index], val) for val in vals]
+    # 2. sort the decorated list
+    deco.sort()
+    # 3. undecorate the list
+    return [val for _, val in deco]
+
+
+def get_qp_statistics(qp_list):
+    qp_arr = np.array(qp_list)
+    qp_min = qp_arr.min()
+    qp_max = qp_arr.max()
+    qp_mean = qp_arr.mean()
+    qp_var = qp_arr.var()
+    return qp_min, qp_max, qp_mean, qp_var
+
+
+def parse_qp_information(out, debug):
+    qp_vals = []
+    frame_num = -1
+    pix_fmt = None
+    pict_type = None
+    qp_list = []
+
+    reinit_pattern = (
+        r"\[[^\]]+\] Reinit context to (?P<resolution>\d+x\d+), "
+        r"pix_fmt: (?P<pix_fmt>.+)"
+    )
+    newframe_pattern = r"\[[^\]]+\] New frame, type: (?P<pict_type>.+)"
+    qp_pattern = r"\[[^\]]+\] (?P<qp_str>\d+)$"
+
+    qp_keys = ["frame_num", "pix_fmt", "pict_type", "qp_min", "qp_max", "qp_mean", "qp_var"]
+
+    for line in out.splitlines():
+        try:
+            line = line.decode("ascii").strip()
+        except UnicodeDecodeError:
+            # ignore the line
+            continue
+        if "Reinit context to" in line:
+            # [h264 @ 0x30d1a80] Reinit context to 1280x720, pix_fmt: yuv420p
+            match = re.search(reinit_pattern, line)
+            if not match:
+                print(f'warning: invalid reinit line ("{line}")')
+                sys.exit(-1)
+            # reinit: flush all previous data
+            _resolution = match.group("resolution")
+            pix_fmt = match.group("pix_fmt")
+            qp_vals = []
+            frame_num = -1
+            qp_list = []
+
+        elif "New frame, type:" in line:
+            # [h264 @ 0x30d1a80] New frame, type: I
+            match = re.search(newframe_pattern, line)
+            if not match:
+                print(f'warning: invalid newframe line ("{line}")')
+                sys.exit(-1)
+            # store the old frame info
+            if frame_num != -1:
+                # get derived QP statistics
+                qp_min, qp_max, qp_mean, qp_var = get_qp_statistics(qp_list)
+                qp_vals.append([frame_num, pix_fmt, pict_type, qp_min, qp_max, qp_mean, qp_var])
+                qp_list = []
+            # new frame
+            pict_type = match.group("pict_type")
+            frame_num += 1
+
+        else:
+            # [h264 @ 0x30d1a80] 3535353535353535353535...
+            match = re.search(qp_pattern, line)
+            if not match:
+                continue
+            qp_str = match.group("qp_str")
+            qp_list += [int(qp_str[i: i + 2]) for i in range(0, len(qp_str), 2)]
+
+    # dump the last state
+    if qp_list:
+        qp_min, qp_max, qp_mean, qp_var = get_qp_statistics(qp_list)
+        qp_vals.append([frame_num, pix_fmt, pict_type, qp_min, qp_max, qp_mean, qp_var])
+        qp_list = []
+
+    return qp_keys, qp_vals

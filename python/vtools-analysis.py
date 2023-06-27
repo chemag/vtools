@@ -29,6 +29,7 @@ default_values = {
     "add_opencv_analysis": True,
     "add_mse": False,
     "add_ffprobe_frames": False,
+    "add_qp": False,
     "filter": "frames",
     "infile": None,
     "outfile": None,
@@ -127,6 +128,19 @@ def run_frame_analysis(options):
             keys = keys + ffprobe_keys[1:]
             vals = [v1 + v2[1:] for (v1, v2) in zip(vals, ffprobe_vals)]
 
+    if options.add_qp:
+        qp_keys, qp_vals = ffprobe.get_frames_qp_information(options.infile, debug=options.debug)
+        if not keys and not vals:
+            keys, vals = qp_keys, qp_vals
+        else:
+            # join the 2x sources of information
+            # ensure the same number of frames in both sources
+            assert len(qp_vals) == len(vals), f"error: ffprobe-qp produced {len(qp_vals)} frames while previously produced {len(vals)} frames"
+            # join by frame_num in both lists
+            # assume frame_num-sorted lists
+            keys = keys + qp_keys[1:]
+            vals = [v1 + v2[1:] for (v1, v2) in zip(vals, qp_vals)]
+
     # calculate the output
     with open(options.outfile, "w") as fd:
         # write the header
@@ -224,6 +238,23 @@ def get_options(argv):
         action="store_false",
         help="Add ffprobe frame values to frame analysis%s"
         % (" [default]" if not default_values["add_ffprobe_frames"] else ""),
+    )
+    parser.add_argument(
+        "--add-qp",
+        action="store_const",
+        default=default_values["add_qp"],
+        dest="add_qp",
+        const=True,
+        help="Add QP columns (min, max, mean, var)%s"
+        % (" [default]" if default_values["add_qp"] else ""),
+    )
+    parser.add_argument(
+        "--noadd-qp",
+        action="store_const",
+        dest="add_qp",
+        const=False,
+        help="Do not add QP columns (min, max, mean, var)%s"
+        % (" [default]" if not default_values["add_qp"] else ""),
     )
     parser.add_argument(
         "--filter",
