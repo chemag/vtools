@@ -259,7 +259,7 @@ def get_options(argv):
         default=default_values["add_qp"],
         dest="add_qp",
         const=True,
-        help="Add QP columns (min, max, mean, var)%s"
+        help="Add QP columns (min, max, mean, var) (h264 only)%s"
         % (" [default]" if default_values["add_qp"] else ""),
     )
     parser.add_argument(
@@ -267,7 +267,7 @@ def get_options(argv):
         action="store_const",
         dest="add_qp",
         const=False,
-        help="Do not add QP columns (min, max, mean, var)%s"
+        help="Do not add QP columns (min, max, mean, var) (h264 only)%s"
         % (" [default]" if not default_values["add_qp"] else ""),
     )
     parser.add_argument(
@@ -276,7 +276,7 @@ def get_options(argv):
         default=default_values["add_mb_type"],
         dest="add_mb_type",
         const=True,
-        help="Add MB type columns%s"
+        help="Add MB type columns (h264 only)%s"
         % (" [default]" if default_values["add_mb_type"] else ""),
     )
     parser.add_argument(
@@ -284,7 +284,7 @@ def get_options(argv):
         action="store_const",
         dest="add_mb_type",
         const=False,
-        help="Do not add MB type columns%s"
+        help="Do not add MB type columns (h264 only)%s"
         % (" [default]" if not default_values["add_mb_type"] else ""),
     )
     parser.add_argument(
