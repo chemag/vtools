@@ -28,7 +28,7 @@ default_values = {
     "dry_run": False,
     "add_opencv_analysis": True,
     "add_mse": False,
-    "add_ffprobe_frames": False,
+    "add_ffprobe_frames": True,
     "add_qp": False,
     "add_mb_type": False,
     "filter": "frames",
