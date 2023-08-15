@@ -19,6 +19,7 @@ default_values = {
     "dump_file": None,
     "dump_list": [],
     "infile": None,
+    "outfile": None,
 }
 
 
@@ -50,10 +51,7 @@ def process_diff(frame2, frame1, frame_counter1, width, height, dfid, options):
         diff.astype(np.uint8).tofile(dfid)
     mse = (diff**2).mean()
     mse /= width * height
-    print(
-        f"{frame_counter1},{frame_counter1 + 1},{mse},"
-        + f'{math.log10(mse) if mse != 0.0 else "-inf"}'
-    )
+    return frame_counter1, frame_counter1 + 1, mse, math.log10(mse) if mse != 0.0 else "-inf"
 
 
 def diff_consecutive_frames(options):
@@ -75,8 +73,7 @@ def diff_consecutive_frames(options):
     raw_outfile = f"{options.dump_file}.{width}x{height}.y8.yuv"
     dfid = open(raw_outfile, "w") if options.dump_file else None
 
-    # print header
-    print("frame1,frame2,mse,log10_mse")
+    results = []
     while True:
         # 2. convert the video into images (luma-only)
         stream = ffmpeg.input(
@@ -92,11 +89,12 @@ def diff_consecutive_frames(options):
                 sys.exit(-1)
             break
         if last_frame is not None:
-            process_diff(
+            frame_counter, frame_counter_next, mse, log_mse = process_diff(
                 frames[0], last_frame, frame_counter, width, height, dfid, options
             )
+            results.append([frame_counter, frame_counter_next, mse, log_mse])
         for i in range(len(frames) - 1):
-            process_diff(
+            frame_counter, frame_counter_next, mse, log_mse = process_diff(
                 frames[i + 1],
                 frames[i],
                 frame_counter + i,
@@ -105,10 +103,17 @@ def diff_consecutive_frames(options):
                 dfid,
                 options,
             )
+            results.append([frame_counter, frame_counter_next, mse, log_mse])
         # keep last frame
         last_frame = frames[-1]
         timestamp += chunk_size_sec
         frame_counter += len(frames)
+
+    # print header
+    with open(options.outfile, "w") as fout:
+        fout.write("frame1,frame2,mse,log10_mse\n")
+        for frame_counter, frame_counter_next, mse, log_mse in results:
+            fout.write(f"{frame_counter},{frame_counter_next},{mse},{log_mse}\n")
 
     if options.dump_file:
         # convert the file to mp4
@@ -194,12 +199,22 @@ def get_options(argv):
         help="dump list",
     )
     parser.add_argument(
-        "infile",
+        "-i",
+        "--infile",
+        dest="infile",
         type=str,
-        nargs="?",
         default=default_values["infile"],
         metavar="input-file",
         help="input file",
+    )
+    parser.add_argument(
+        "-o",
+        "--outfile",
+        dest="outfile",
+        type=str,
+        default=default_values["outfile"],
+        metavar="output-file",
+        help="output file",
     )
     # do the parsing
     options = parser.parse_args(argv[1:])
@@ -215,13 +230,15 @@ def main(argv):
         print("version: %s" % __version__)
         sys.exit(0)
     # get infile
-    if options.infile == "-":
+    if options.infile == "-" or options.infile is None:
         options.infile = "/dev/fd/0"
+    if options.outfile == "-" or options.outfile is None:
+        options.outfile = "/dev/fd/1"
     # print results
     if options.debug > 0:
         print(options)
     # do something
-    outfile = diff_consecutive_frames(options)
+    diff_consecutive_frames(options)
 
 
 if __name__ == "__main__":
