@@ -224,6 +224,8 @@ def get_options(argv):
 
 
 def main(argv):
+    print("error: use src/vtools-analysis.py --add-mse -i in.mp4 -o res.csv")
+    sys.exit(-1)
     # parse options
     options = get_options(argv)
     if options.version:
