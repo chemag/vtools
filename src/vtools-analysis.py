@@ -17,6 +17,7 @@ import sys
 import ffprobe
 
 DEFAULT_NOISE_LEVEL = 50
+PSNR_K = math.log10(2**8 - 1)
 
 FILTER_CHOICES = {
     "help": "show help options",
@@ -89,7 +90,12 @@ def run_opencv_analysis(infile, add_mse, debug):
                 if diff_msey is None
                 else (math.log10(diff_msey) if diff_msey != 0.0 else "-inf")
             )
-            val += [log10_msey, diff_msey, diff_mseu, diff_msev]
+            psnr_y = (
+                None
+                if log10_msey is None
+                else 20 * PSNR_K - 10 * log10_msey
+            )
+            val += [log10_msey, psnr_y, diff_msey, diff_mseu, diff_msev]
         opencv_vals.append(val)
         # update previous info
         prev_timestamp_ms = timestamp_ms
@@ -99,7 +105,7 @@ def run_opencv_analysis(infile, add_mse, debug):
     # get the tuple keys
     opencv_keys = ["frame_num", "timestamp_ms", "delta_timestamp_ms"]
     if add_mse:
-        opencv_keys += ["log10_msey", "diff_msey", "diff_mseu", "diff_msev"]
+        opencv_keys += ["log10_msey", "psnr_y", "diff_msey", "diff_mseu", "diff_msev"]
 
     # release the video objects
     video_capture.release()
