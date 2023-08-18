@@ -46,7 +46,7 @@ def calculate_diff_mse(img, prev_img):
     yuvprev_img = cv2.cvtColor(prev_img, cv2.COLOR_BGR2YCrCb)
     diff = yuvimg.astype(np.int16) - yuvprev_img.astype(np.int16)
     height, width, channels = img.shape
-    diff_mse = (diff**2).mean(axis=(1, 0)) / (width * height)
+    diff_mse = (diff**2).mean(axis=(1, 0))
     return list(diff_mse)
 
 
