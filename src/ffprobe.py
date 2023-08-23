@@ -11,7 +11,7 @@ import sys
 from common import run
 
 
-def run_ffprobe_command(infile, **kwargs):
+def run_ffprobe_command(infile, analysis="frames", **kwargs):
     stream_id = kwargs.get("stream_id", None)
     ffprobe_bin = kwargs.get("ffprobe", "ffprobe")
     debug = kwargs.get("debug", 0)
@@ -21,7 +21,10 @@ def run_ffprobe_command(infile, **kwargs):
     if stream_id is not None:
         command += f"-select_streams {stream_id}"
     command += " -print_format json"
-    command += " -count_frames -show_frames"
+    if analysis == "streams":
+        command += " -show_streams"
+    else:
+        command += " -count_frames -show_frames"
     if add_qp:
         command += " -debug qp"
     elif add_mb_type:
@@ -30,6 +33,13 @@ def run_ffprobe_command(infile, **kwargs):
     returncode, out, err = run(command, debug=debug)
     assert returncode == 0, f'error running "{command}"'
     return out, err
+
+
+def get_info(infile, **kwargs):
+    out, err = run_ffprobe_command(infile, analysis="streams", **kwargs)
+    # parse the output
+    streams = parse_ffprobe_streams_output(out, **kwargs)
+    return streams
 
 
 def get_frames_information(infile, **kwargs):
@@ -77,6 +87,13 @@ def get_frames_mb_information(infile, **kwargs):
     mb_vals = sort_frames(mb_keys, mb_vals, "frame_num")
     return mb_keys, mb_vals
 
+
+def parse_ffprobe_streams_output(out, debug):
+    # load the output
+    parsed_out = json.loads(out)
+    assert "streams" in parsed_out, f"error: invalid ffprobe output (keys are {parsed_out.keys()})"
+    streams = parsed_out["streams"]
+    return streams
 
 def parse_ffprobe_frames_output(out, debug):
     frame_dict = parse_ffprobe_output(out, debug)
