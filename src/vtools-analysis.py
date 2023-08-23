@@ -113,17 +113,28 @@ def run_opencv_analysis(infile, add_mse, debug):
     return opencv_keys, opencv_vals
 
 
-def run_frame_analysis(options):
+def run_frame_analysis(**kwargs):
+    # read input values
+    debug = kwargs.get("debug", default_values["debug"])
+    add_opencv_analysis = kwargs.get("add_opencv_analysis", default_values["add_opencv_analysis"])
+    add_mse = kwargs.get("add_mse", default_values["add_mse"])
+    add_ffprobe_frames = kwargs.get("add_ffprobe_frames", default_values["add_ffprobe_frames"])
+    add_qp = kwargs.get("add_qp", default_values["add_qp"])
+    add_mb_type = kwargs.get("add_mb_type", default_values["add_mb_type"])
+    infile = kwargs.get("infile", default_values["infile"])
+    outfile = kwargs.get("outfile", default_values["outfile"])
+
+    # process input
     keys, vals = [], []
 
     # run the opencv analysis
-    if options.add_opencv_analysis:
-        opencv_keys, opencv_vals = run_opencv_analysis(options.infile, options.add_mse, options.debug)
+    if add_opencv_analysis:
+        opencv_keys, opencv_vals = run_opencv_analysis(infile, add_mse, debug)
         keys, vals = opencv_keys, opencv_vals
 
     # add other sources of information
-    if options.add_ffprobe_frames:
-        ffprobe_keys, ffprobe_vals = ffprobe.get_frames_information(options.infile, debug=options.debug)
+    if add_ffprobe_frames:
+        ffprobe_keys, ffprobe_vals = ffprobe.get_frames_information(infile, debug=debug)
         if not keys and not vals:
             keys, vals = ffprobe_keys, ffprobe_vals
         else:
@@ -135,8 +146,8 @@ def run_frame_analysis(options):
             keys = keys + ffprobe_keys[1:]
             vals = [v1 + v2[1:] for (v1, v2) in zip(vals, ffprobe_vals)]
 
-    if options.add_qp:
-        qp_keys, qp_vals = ffprobe.get_frames_qp_information(options.infile, debug=options.debug)
+    if add_qp:
+        qp_keys, qp_vals = ffprobe.get_frames_qp_information(infile, debug=debug)
         if not keys and not vals:
             keys, vals = qp_keys, qp_vals
         else:
@@ -148,8 +159,8 @@ def run_frame_analysis(options):
             keys = keys + qp_keys[1:]
             vals = [v1 + v2[1:] for (v1, v2) in zip(vals, qp_vals)]
 
-    if options.add_mb_type:
-        mb_keys, mb_vals = ffprobe.get_frames_mb_information(options.infile, debug=options.debug)
+    if add_mb_type:
+        mb_keys, mb_vals = ffprobe.get_frames_mb_information(infile, debug=debug)
         if not keys and not vals:
             keys, vals = mb_keys, mb_vals
         else:
@@ -162,7 +173,7 @@ def run_frame_analysis(options):
             vals = [v1 + v2[1:] for (v1, v2) in zip(vals, mb_vals)]
 
     # calculate the output
-    with open(options.outfile, "w") as fd:
+    with open(outfile, "w") as fd:
         # write the header
         fd.write(",".join(keys) + "\n")
         for val in vals:
@@ -344,7 +355,7 @@ def main(argv):
     if options.debug > 0:
         print(options)
 
-    run_frame_analysis(options)
+    run_frame_analysis(**vars(options))
 
 
 if __name__ == "__main__":
