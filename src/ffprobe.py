@@ -245,7 +245,7 @@ def parse_qp_information(out, debug):
         r"pix_fmt: (?P<pix_fmt>.+)"
     )
     newframe_pattern = r"\[[^\]]+\] New frame, type: (?P<pict_type>.+)"
-    qp_pattern = r"\[[^\]]+\] (?P<qp_str>\d+)$"
+    qp_pattern = r"\[[^\]]+\] (?P<qp_str>[\d ]+)$"
 
     qp_keys = ["frame_num", "pix_fmt", "pict_type", "qp_min", "qp_max", "qp_mean", "qp_var"]
 
