@@ -90,9 +90,10 @@ def run_opencv_analysis(infile, add_mse, debug):
                 if diff_msey is None
                 else (math.log10(diff_msey) if diff_msey != 0.0 else "-inf")
             )
+
             psnr_y = (
                 None
-                if log10_msey is None
+                if ((log10_msey is None) or (log10_msey == "-inf"))
                 else 20 * PSNR_K - 10 * log10_msey
             )
             val += [log10_msey, psnr_y, diff_msey, diff_mseu, diff_msev]
