@@ -22,6 +22,17 @@ import timeit
 import ffmpeg
 import ffprobe
 
+default_values = {
+    "debug": 0,
+    "dry_run": False,
+    "seek": 0,
+    "format": None,
+    "resolution": None,
+    "label": None,
+    "fps": -1,
+}
+
+
 clickPoints = []
 activeVideo = None
 BORDER = 30
@@ -594,42 +605,127 @@ async def analyze_files(files, raw, options):
         pass
 
 
-#############################
-commands = [f"\n'{chr(x)}' - {descr.get(shortcuts.get(x))}\n" for x in shortcuts.keys()]
-command_string = "\n".join(commands)
-parser = argparse.ArgumentParser(
-    description=f"Play video files. Keyboard commands: {command_string}",
-    formatter_class=argparse.RawTextHelpFormatter,
-)
-parser.add_argument("files", nargs="*", help="file(s)")
-parser.add_argument("-f", "--format", required=False, help="pixel format for raw files")
-parser.add_argument(
-    "-s", "--resolution", required=False, help="resolution for raw files"
-)
-parser.add_argument("-l", "--label", required=False)
-parser.add_argument("--seek", required=False, type=int, default=0)
-parser.add_argument("-p", "--paused", required=False, action="store_true")
-parser.add_argument("--rot_90", required=False, action="store_true")
-parser.add_argument(
-    "-x", "--extract", required=False, help="Extract a list of frames (comma separated)"
-)
-parser.add_argument("-r", "--fps", required=False, type=int, default=-1)
+def get_options(argv):
+    """Generic option parser.
 
-options = parser.parse_args()
-font = cv2.FONT_HERSHEY_SIMPLEX
-raw = False
+    Args:
+        argv: list containing arguments
 
-if options.format is not None and len(options.format) > 0:
-    raw = True
-    if options.format == "yuv420p":
-        pixFormat = cv2.COLOR_YUV2BGR_I420
-    elif options.format == "nv12":
-        pixFormat = cv2.COLOR_YUV2BGR_NV12
-    elif options.format == "nv21":
-        pixFormat = cv2.COLOR_YUV2BGR_NV21
-    else:
-        print("Unknown color format")
-        exit(-1)
+    Returns:
+        Namespace - An argparse.ArgumentParser-generated option object
+    """
+    # init parser
+    # usage = 'usage: %prog [options] arg1 arg2'
+    # parser = argparse.OptionParser(usage=usage)
+    # parser.print_help() to get argparse.usage (large help)
+    # parser.print_usage() to get argparse.usage (just usage line)
+    commands = [
+        f"\n'{chr(x)}' - {descr.get(shortcuts.get(x))}\n" for x in shortcuts.keys()
+    ]
+    command_string = "\n".join(commands)
+    description = f"Play video files. Keyboard commands: {command_string}"
+    parser = argparse.ArgumentParser(
+        description=description,
+        formatter_class=argparse.RawTextHelpFormatter,
+    )
+    parser.add_argument(
+        "-v",
+        "--version",
+        action="store_true",
+        dest="version",
+        default=False,
+        help="Print version",
+    )
+    parser.add_argument(
+        "-d",
+        "--debug",
+        action="count",
+        dest="debug",
+        default=default_values["debug"],
+        help="Increase verbosity (use multiple times for more)",
+    )
+    parser.add_argument(
+        "--quiet",
+        action="store_const",
+        dest="debug",
+        const=-1,
+        help="Zero verbosity",
+    )
+    parser.add_argument(
+        "--dry-run",
+        action="store_true",
+        dest="dry_run",
+        default=default_values["dry_run"],
+        help="Dry run",
+    )
+    parser.add_argument(
+        "-f",
+        "--format",
+        required=False,
+        default=default_values["format"],
+        help="pixel format for raw files",
+    )
+    parser.add_argument(
+        "-s",
+        "--resolution",
+        required=False,
+        default=default_values["resolution"],
+        help="resolution for raw files",
+    )
+    parser.add_argument(
+        "-l", "--label", default=default_values["label"], required=False
+    )
+    parser.add_argument(
+        "--seek", required=False, type=int, default=default_values["seek"]
+    )
+
+    parser.add_argument("-p", "--paused", required=False, action="store_true")
+    parser.add_argument("--rot_90", required=False, action="store_true")
+    parser.add_argument(
+        "-x",
+        "--extract",
+        required=False,
+        help="Extract a list of frames (comma separated)",
+    )
+    parser.add_argument(
+        "-r",
+        "--fps",
+        required=False,
+        type=int,
+        default=default_values["fps"],
+        help="Input Framerate",
+    )
+
+    parser.add_argument("files", nargs="*", help="file(s)")
+
+    options = parser.parse_args()
+    return options
 
 
-asyncio.run(analyze_files(options.files, raw, options))
+def main(argv):
+    # parse options
+    options = get_options(argv)
+    if options.version:
+        print("version: %s" % __version__)
+        sys.exit(0)
+
+    raw = False
+
+    if options.format is not None and len(options.format) > 0:
+        raw = True
+        if options.format == "yuv420p":
+            pixFormat = cv2.COLOR_YUV2BGR_I420
+        elif options.format == "nv12":
+            pixFormat = cv2.COLOR_YUV2BGR_NV12
+        elif options.format == "nv21":
+            pixFormat = cv2.COLOR_YUV2BGR_NV21
+        else:
+            print("Unknown color format")
+            exit(-1)
+
+    asyncio.run(analyze_files(options.files, raw, options))
+
+
+if __name__ == "__main__":
+    # at least the CLI program name: (CLI) execution
+    main(sys.argv)
