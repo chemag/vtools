@@ -12,10 +12,10 @@ import cv2
 import math
 import numpy as np
 import os
-import random
 import re
 import soundfile
 import sys
+import tempfile
 import threading
 import timeit
 
@@ -96,7 +96,7 @@ class AudioWaveform:
         self.height = height
         self.show_sec = 4
 
-        audiofile = f"/tmp/{random.randint(0,1000000)}_videoplayer.wav"
+        audiofile = tempfile.NamedTemporaryFile(prefix="vtools-player.").name + ".wav"
         stream = ffmpeg.input(filename)
         output = ffmpeg.output(stream, f"{audiofile}", ac=1)
         std_out, std_err = ffmpeg.run(output, overwrite_output=True)
