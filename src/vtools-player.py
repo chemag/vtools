@@ -1,31 +1,26 @@
 #!/usr/bin/python
-"""Videoplayer
+"""Videoplayer.
 
 Play video, step and extract frames.
 Can also show waveform if audio is present.
-
 """
 
-from __future__ import print_function
-
-from timeit import default_timer as timer
-import os
-import sys
-import cv2
-import numpy as np
 import argparse
-from argparse import RawTextHelpFormatter
-from collections import Counter
-from matplotlib import pyplot as plt
-import csv
-import math
-import re
 import asyncio
+import csv
+import cv2
+import math
+import numpy as np
+import os
+import random
+import re
+import soundfile
+import sys
 import threading
-import soundfile as sf
+import timeit
+
 import ffmpeg
 import ffprobe
-import random
 
 clickPoints = []
 activeVideo = None
@@ -108,7 +103,7 @@ class AudioWaveform:
         print(f"{std_out =}")
         # check file
         print(f"Create audio file {audiofile}")
-        self.soundfile = sf.SoundFile(f"{audiofile}")
+        self.soundfile = soundfile.SoundFile(f"{audiofile}")
         self.samplerate = self.soundfile.samplerate
         self.waveData = self.soundfile.read()
         # remove file?
@@ -482,14 +477,14 @@ async def analyze_files(files, raw, options):
     tasks = [None] * len(videoList)
     while not done:
         videolock = asyncio.Lock()
-        start = timer()
+        start = timeit.default_timer()
 
         if capture:
             counter = 0
             for video in videoList:
                 async with videolock:
                     tasks[counter] = asyncio.create_task(video.next())
-        capDone = timer()
+        capDone = timeit.default_timer()
         frameduration = 1 / video.fps
         if options.fps > 0:
             frameduration = 1 / options.fps
@@ -504,7 +499,7 @@ async def analyze_files(files, raw, options):
             delay = 1
         if pause:
             delay = -1
-        start = timer()
+        start = timeit.default_timer()
         k = cv2.waitKey(int(delay * 1000))  # 30fps?
 
         if k == ord("m"):
@@ -604,7 +599,7 @@ commands = [f"\n'{chr(x)}' - {descr.get(shortcuts.get(x))}\n" for x in shortcuts
 command_string = "\n".join(commands)
 parser = argparse.ArgumentParser(
     description=f"Play video files. Keyboard commands: {command_string}",
-    formatter_class=RawTextHelpFormatter,
+    formatter_class=argparse.RawTextHelpFormatter,
 )
 parser.add_argument("files", nargs="*", help="file(s)")
 parser.add_argument("-f", "--format", required=False, help="pixel format for raw files")
