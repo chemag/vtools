@@ -57,3 +57,22 @@ $ ./python/vtools-entropy.py --dump-file /tmp/diff.mp4 input.mjpeg.mkv
 ![Capture of dump-file difference](docs/diff.frame60.png)
 
 Figure 1 shows a frame from a diff video (dump-file). 
+
+
+
+# Appendix 1: Prerequisites
+
+The vtools-player.py script requires installing both [ffmpeg-python](https://pypi.org/project/ffmpeg-python) and [ffprobe-python](https://pypi.org/project/ffprobe-python)
+
+
+```
+# pip install ffmpeg-python
+# pip install ffprobe-python
+```
+
+These packages naming collides with the following packages, which must be removed:
+```
+# pip uninstall ffmpeg
+# pip uninstall python-ffmpeg
+# pip uninstall ffprobe
+```
