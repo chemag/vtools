@@ -721,6 +721,11 @@ def main(argv):
             print("Unknown color format")
             exit(-1)
 
+    # ensure FFMPEG backend is supported
+    assert cv2.videoio_registry.hasBackend(
+        cv2.CAP_FFMPEG
+    ), "error: player requires cv2 to support FFMPEG videoio"
+
     asyncio.run(analyze_files(options.files, raw, options))
 
 
