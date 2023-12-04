@@ -13,8 +13,9 @@ import cv2
 import math
 import numpy as np
 import sys
+import importlib
 
-import ffprobe
+vtools_ffprobe = importlib.import_module("vtools-ffprobe")
 
 DEFAULT_NOISE_LEVEL = 50
 PSNR_K = math.log10(2**8 - 1)
@@ -135,7 +136,7 @@ def run_frame_analysis(**kwargs):
 
     # add other sources of information
     if add_ffprobe_frames:
-        ffprobe_keys, ffprobe_vals = ffprobe.get_frames_information(infile, debug=debug)
+        ffprobe_keys, ffprobe_vals = vtools_ffprobe.get_frames_information(infile, debug=debug)
         if not keys and not vals:
             keys, vals = ffprobe_keys, ffprobe_vals
         else:
@@ -148,7 +149,7 @@ def run_frame_analysis(**kwargs):
             vals = [v1 + v2[1:] for (v1, v2) in zip(vals, ffprobe_vals)]
 
     if add_qp:
-        qp_keys, qp_vals = ffprobe.get_frames_qp_information(infile, debug=debug)
+        qp_keys, qp_vals = vtools_ffprobe.get_frames_qp_information(infile, debug=debug)
         if not keys and not vals:
             keys, vals = qp_keys, qp_vals
         else:
@@ -161,7 +162,7 @@ def run_frame_analysis(**kwargs):
             vals = [v1 + v2[1:] for (v1, v2) in zip(vals, qp_vals)]
 
     if add_mb_type:
-        mb_keys, mb_vals = ffprobe.get_frames_mb_information(infile, debug=debug)
+        mb_keys, mb_vals = vtools_ffprobe.get_frames_mb_information(infile, debug=debug)
         if not keys and not vals:
             keys, vals = mb_keys, mb_vals
         else:
