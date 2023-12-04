@@ -7,6 +7,7 @@ Can also show waveform if audio is present.
 
 import argparse
 import asyncio
+import common
 import csv
 import cv2
 import math
@@ -19,7 +20,6 @@ import tempfile
 import threading
 import timeit
 
-import ffmpeg
 import ffprobe
 
 default_values = {
@@ -101,23 +101,24 @@ c3 = (0, 0, 255)
 
 
 class AudioWaveform:
-    def __init__(self, filename, width, height):
+    def __init__(self, filename, width, height, debug):
         self.filename = filename
         self.width = width
         self.height = height
         self.show_sec = 4
-
+        # extract the audio stream into a single, mono audio file
+        if debug > 0:
+            print(f"Create audio file {audiofile}")
         audiofile = tempfile.NamedTemporaryFile(prefix="vtools-player.").name + ".wav"
-        stream = ffmpeg.input(filename)
-        output = ffmpeg.output(stream, f"{audiofile}", ac=1)
-        std_out, std_err = ffmpeg.run(output, overwrite_output=True)
-        print(f"{std_out =}")
+        command = f"ffmpeg -i {filename} -ac 1 {audiofile}"
+        returncode, out, err = common.run(command, debug=debug)
+        if returncode != 0:
+            raise common.InvalidCommand(f'error running "{command}"')
         # check file
-        print(f"Create audio file {audiofile}")
         self.soundfile = soundfile.SoundFile(f"{audiofile}")
         self.samplerate = self.soundfile.samplerate
         self.waveData = self.soundfile.read()
-        # remove file?
+        # TODO(johan): remove file?
         self.start = 0
         self.end = len(self.waveData)
         self.last_draw_time = 0
@@ -449,14 +450,14 @@ async def analyze_files(files, raw, options):
                 metadata = ffprobe.FFProbe(name)
             except:  # noqa
                 print("Failed to probe")
-                audio = AudioWaveform(name, 600, 300)
+                audio = AudioWaveform(name, 600, 300, options.debug)
                 videoList[count].set_audio_wavform(audio)
 
             if metadata is not None:
                 for stream in metadata.streams:
                     if stream.is_audio():
                         # open audio
-                        audio = AudioWaveform(name, 600, 300)
+                        audio = AudioWaveform(name, 600, 300, options.debug)
                         videoList[count].set_audio_wavform(audio)
             cv2.namedWindow(name)
             count += 1
