@@ -57,7 +57,9 @@ WAVE_FIND_MAX = 17
 shortcuts = {
     ord(" "): PAUSE,
     ord("a"): PREVIOUS_FRAME,
+    ord(","): PREVIOUS_FRAME,
     ord("s"): NEXT_FRAME,
+    ord("."): NEXT_FRAME,
     ord("z"): PREVIOUS_SECOND,
     ord("x"): NEXT_SECOND,
     ord("1"): MARKER_1,
