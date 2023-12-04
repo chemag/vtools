@@ -350,13 +350,13 @@ class VideoCaptureYUV:
 
 
 class Video:
-    def __init__(self, cap, name):
+    def __init__(self, cap, filename):
         self.width = cap.get(cv2.CAP_PROP_FRAME_WIDTH)
         self.height = cap.get(cv2.CAP_PROP_FRAME_HEIGHT)
         self.framecount = cap.get(cv2.CAP_PROP_FRAME_COUNT)
         self.cap = cap
-        self.name = name
-        cv2.namedWindow(self.name)
+        self.filename = filename
+        cv2.namedWindow(self.filename)
         self.fps = cap.get(cv2.CAP_PROP_FPS)
         self.audio = None
         self.current = 0
@@ -384,19 +384,19 @@ class Video:
     def current_frame(self):
         return self.img
 
-    def get_name(self):
-        return self.name
+    def get_filename(self):
+        return self.filename
 
     def set_audio_wavform(self, audioWaveForm):
         self.audio = audioWaveForm
 
     async def show_current_frame(self, showInfo=False):
-        cv2.imshow(self.name, self.img)
+        cv2.imshow(self.filename, self.img)
         if self.audio and self.current < self.framecount:
             time = self.cap.get(cv2.CAP_PROP_POS_MSEC) / 1000
             wave_ = self.audio.get_wave_image(time, f"frame: {int(self.current):0>3}")
             if wave_ is not None and len(wave_) > 0:
-                cv2.imshow(self.name + "_audio", wave_)
+                cv2.imshow(self.filename + "_audio", wave_)
 
     def add_overlay_region(self, topleft, bottomright):
         self.topleft = topleft
@@ -430,36 +430,36 @@ async def analyze_files(files, raw, options):
     waveimg = []
     count = 0
     if raw:
-        for name in files:
+        for filename in files:
             print(
                 "Cap raw {:s} {:s} {:s}".format(
                     options.input, str(size), str(pixFormat)
                 )
             )
-            cap = VideoCaptureYUV(name, size, pixFormat)
-            videoList[count] = Video(cap, name)
-            cv2.namedWindow(name)
+            cap = VideoCaptureYUV(filename, size, pixFormat)
+            videoList[count] = Video(cap, filename)
+            cv2.namedWindow(filename)
             count += 1
     else:
-        for name in files:
-            print(f"Count: {count}, open: {name}")
-            cap = cv2.VideoCapture(name, cv2.CAP_FFMPEG)
-            videoList[count] = Video(cap, name)
+        for filename in files:
+            print(f"Count: {count}, open: {filename}")
+            cap = cv2.VideoCapture(filename, cv2.CAP_FFMPEG)
+            videoList[count] = Video(cap, filename)
             metadata = None
             try:
-                metadata = ffprobe.FFProbe(name)
+                metadata = ffprobe.FFProbe(filename)
             except:  # noqa
                 print("Failed to probe")
-                audio = AudioWaveform(name, 600, 300, options.debug)
+                audio = AudioWaveform(filename, 600, 300, options.debug)
                 videoList[count].set_audio_wavform(audio)
 
             if metadata is not None:
                 for stream in metadata.streams:
                     if stream.is_audio():
                         # open audio
-                        audio = AudioWaveform(name, 600, 300, options.debug)
+                        audio = AudioWaveform(filename, 600, 300, options.debug)
                         videoList[count].set_audio_wavform(audio)
-            cv2.namedWindow(name)
+            cv2.namedWindow(filename)
             count += 1
 
     total = 0
@@ -593,9 +593,10 @@ async def analyze_files(files, raw, options):
             print("Call save image")
             for video in videoList:
                 img = video.current_frame()
-                name = video.get_name()
+                filename = video.get_filename()
                 cv2.imwrite(
-                    f"{name}_fr_{video.current}_{img.shape[1]}x{img.shape[0]}.png", img
+                    f"{filename}_fr_{video.current}_{img.shape[1]}x{img.shape[0]}.png",
+                    img,
                 )
         for video in videoList:
             await video.show_current_frame(True)
