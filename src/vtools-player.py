@@ -551,7 +551,7 @@ async def analyze_files(files, raw, options):
         elif command == MARKER_3:
             for video in videoList:
                 if video.audio:
-                    video.audio.set_marker(2)
+                    video.audio.set_marker(3)
         elif command == ZOOM_IN:
             for video in videoList:
                 if video.audio:
