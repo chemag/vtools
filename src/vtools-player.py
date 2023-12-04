@@ -349,11 +349,12 @@ class VideoCaptureYUV:
 
 
 class Video:
-    def __init__(self, cap, filename):
+    def __init__(self, cap, rot_90, filename):
         self.width = cap.get(cv2.CAP_PROP_FRAME_WIDTH)
         self.height = cap.get(cv2.CAP_PROP_FRAME_HEIGHT)
         self.framecount = cap.get(cv2.CAP_PROP_FRAME_COUNT)
         self.cap = cap
+        self.rot_90 = rot_90
         self.filename = filename
         cv2.namedWindow(self.filename)
         self.fps = cap.get(cv2.CAP_PROP_FPS)
@@ -372,7 +373,7 @@ class Video:
             status, img_ = self.cap.read()
             if status:
                 self.current = self.cap.get(cv2.CAP_PROP_POS_FRAMES)
-                if options.rot_90:
+                if self.rot_90:
                     self.img = cv2.rotate(img_, cv2.ROTATE_90_CLOCKWISE)
                 else:
                     self.img = img_
@@ -436,14 +437,14 @@ async def analyze_files(files, raw, options):
                 )
             )
             cap = VideoCaptureYUV(filename, size, pixFormat)
-            videoList[count] = Video(cap, filename)
+            videoList[count] = Video(cap, options.rot_90, filename)
             cv2.namedWindow(filename)
             count += 1
     else:
         for filename in files:
             print(f"Count: {count}, open: {filename}")
             cap = cv2.VideoCapture(filename, cv2.CAP_FFMPEG)
-            videoList[count] = Video(cap, filename)
+            videoList[count] = Video(cap, options.rot_90, filename)
             # get the number of audio streams
             command = f"ffprobe -v error -select_streams a -show_entries stream=index -of csv=p=0 {filename}"
             returncode, out, err = common.run(command, debug=options.debug)
