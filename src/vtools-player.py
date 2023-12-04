@@ -20,7 +20,6 @@ import tempfile
 import threading
 import timeit
 
-import ffprobe
 
 default_values = {
     "debug": 0,
@@ -445,20 +444,16 @@ async def analyze_files(files, raw, options):
             print(f"Count: {count}, open: {filename}")
             cap = cv2.VideoCapture(filename, cv2.CAP_FFMPEG)
             videoList[count] = Video(cap, filename)
-            metadata = None
-            try:
-                metadata = ffprobe.FFProbe(filename)
-            except:  # noqa
-                print("Failed to probe")
+            # get the number of audio streams
+            command = f"ffprobe -v error -select_streams a -show_entries stream=index -of csv=p=0 {filename}"
+            returncode, out, err = common.run(command, debug=options.debug)
+            if returncode != 0:
+                raise common.InvalidCommand(f'error running "{command}"')
+            num_audio_streams = 0 if not out else int(out)
+            # add audio streams to list (if existing)
+            if num_audio_streams > 0:
                 audio = AudioWaveform(filename, 600, 300, options.debug)
                 videoList[count].set_audio_wavform(audio)
-
-            if metadata is not None:
-                for stream in metadata.streams:
-                    if stream.is_audio():
-                        # open audio
-                        audio = AudioWaveform(filename, 600, 300, options.debug)
-                        videoList[count].set_audio_wavform(audio)
             cv2.namedWindow(filename)
             count += 1
 
