@@ -458,6 +458,9 @@ async def analyze_files(files, raw, options):
                 audio = AudioWaveform(filename, 600, 300, options.debug)
                 videoList[count].set_audio_wavform(audio)
             cv2.namedWindow(filename)
+            if options.seek > 1:
+                await videoList[count].seek_frame(options.seek - 1)
+                await videoList[count].show_current_frame()
             count += 1
 
     total = 0
@@ -485,9 +488,11 @@ async def analyze_files(files, raw, options):
     if options.extract:
         extract_list = [int(x) for x in options.extract.split(",")]
     tasks = [None] * len(videoList)
+    first_pause = options.paused
     while not done:
         videolock = asyncio.Lock()
         start = timeit.default_timer()
+
 
         if capture:
             counter = 0
@@ -517,6 +522,11 @@ async def analyze_files(files, raw, options):
         elif k == ord("n"):
             amp -= 1
         step = 0
+
+
+        if first_pause:
+            pause = True
+            first_pause = False
 
         command = shortcuts.get(k, None)
         if command is None and k == 27:
@@ -587,7 +597,7 @@ async def analyze_files(files, raw, options):
             capture = True
         step = 0
 
-        if k == WRITE or int(video.current) in extract_list:
+        if command == WRITE or int(video.current) in extract_list:
             print("Call save image")
             for video in videoList:
                 img = video.current_frame()
