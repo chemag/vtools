@@ -157,22 +157,38 @@ def run_frame_analysis(**kwargs):
     add_qp = kwargs.get("add_qp", default_values["add_qp"])
     add_mb_type = kwargs.get("add_mb_type", default_values["add_mb_type"])
     summary = kwargs.get("summary", default_values["summary"])
-    infile = kwargs.get("infile", default_values["infile"])
+    infile_list = kwargs.get("infile", default_values["infile"])
     outfile = kwargs.get("outfile", default_values["outfile"])
 
+    # multiple infiles only supported in summary mode
+    assert (
+        len(infile_list) <= 1 or summary
+    ), "error: multiple infiles only supported in summary mode"
+
     # process file
-    df = process_file(
-        infile,
-        add_opencv_analysis,
-        add_mse,
-        add_ffprobe_frames,
-        add_qp,
-        add_mb_type,
-        debug,
-    )
-    # implement summary mode
+    df_list = []
+    for infile in infile_list:
+        df = process_file(
+            infile,
+            add_opencv_analysis,
+            add_mse,
+            add_ffprobe_frames,
+            add_qp,
+            add_mb_type,
+            debug,
+        )
+        # implement summary mode
+        if summary:
+            df = summarize(infile, df)
+        df_list.append(df)
+
     if summary:
-        df = summarize(infile, df)
+        # coalesce summary entries
+        df = None
+        for tmp_df in df_list:
+            df = tmp_df if df is None else pd.concat([df, tmp_df])
+    else:
+        df = df_list[0]
     # write up to output file
     df.to_csv(outfile, index=False)
 
@@ -387,6 +403,7 @@ def get_options(argv):
         "--infile",
         dest="infile",
         type=str,
+        nargs="+",
         default=default_values["infile"],
         metavar="input-file",
         help="input file",
