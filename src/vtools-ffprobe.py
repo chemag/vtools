@@ -5,6 +5,7 @@
 
 import json
 import numpy as np
+import pandas as pd
 import re
 import sys
 
@@ -46,61 +47,68 @@ def get_frames_information(infile, **kwargs):
     debug = kwargs.get("debug", 0)
     out, err = run_ffprobe_command(infile, **kwargs)
     # parse the output
-    keys, vals = parse_ffprobe_frames_output(out, debug)
+    df = parse_ffprobe_frames_output(out, debug)
     # sort the frames
-    vals = sort_frames(keys, vals, "frame_num")
-    return keys, vals
+    df = df.sort_values(by=["frame_num"])
+    return df
 
 
 def get_frames_qp_information(infile, **kwargs):
     debug = kwargs.get("debug", 0)
     out, err = run_ffprobe_command(infile, add_qp=True, **kwargs)
     # parse the output
-    ffprobe_keys, ffprobe_vals = parse_ffprobe_frames_output(out, debug)
-    qp_keys, qp_vals = parse_qp_information(err, debug)
+    ffprobe_df = parse_ffprobe_frames_output(out, debug)
+    qp_df = parse_qp_information(err, debug)
     # join the output
     # ensure the same number of frames in both sources
-    assert len(ffprobe_vals) == len(qp_vals), f"error: ffprobe produced {len(ffprobe_vals)} frames while QP produced {len(qp_vals)} frames"
-    # assume same order for both lists
-    # keep only the first field ("frame_num") from the ffprobe list
-    qp_keys = ffprobe_keys[:1] + qp_keys[3:]
-    qp_vals = [v1[:1] + v2[3:] for (v1, v2) in zip(ffprobe_vals, qp_vals)]
-    # sort the frames
-    qp_vals = sort_frames(qp_keys, qp_vals, "frame_num")
-    return qp_keys, qp_vals
+    assert (
+        ffprobe_df.shape[0] == qp_df.shape[0]
+    ), f"error: ffprobe produced {ffprobe_df.shape[0]} frames while QP produced {qp_df.shape[0]} frames"
+    df = ffprobe_df.join(
+        qp_df.set_index("frame_num"), on="frame_num", rsuffix="_remove"
+    )
+    duplicated_columns = list(k for k in df.keys() if k.endswith("_remove"))
+    df.drop(columns=duplicated_columns, inplace=True)
+    return df
 
 
 def get_frames_mb_information(infile, **kwargs):
     debug = kwargs.get("debug", 0)
     out, err = run_ffprobe_command(infile, add_mb_type=True, **kwargs)
     # parse the output
-    ffprobe_keys, ffprobe_vals = parse_ffprobe_frames_output(out, debug)
-    mb_keys, mb_vals = parse_mb_information(err, debug)
+    ffprobe_df = parse_ffprobe_frames_output(out, debug)
+    mb_df = parse_mb_information(err, debug)
     # join the output
     # ensure the same number of frames in both sources
-    assert len(ffprobe_vals) == len(mb_vals), f"error: ffprobe produced {len(ffprobe_vals)} frames while MB-type produced {len(mb_vals)} frames"
-    # assume same order for both lists
-    # keep only the first field ("frame_num") from the ffprobe list
-    mb_keys = ffprobe_keys[:1] + mb_keys[3:]
-    mb_vals = [v1[:1] + v2[3:] for (v1, v2) in zip(ffprobe_vals, mb_vals)]
-    # sort the frames
-    mb_vals = sort_frames(mb_keys, mb_vals, "frame_num")
-    return mb_keys, mb_vals
+    assert (
+        ffprobe_df.shape[0] == mb_df.shape[0]
+    ), f"error: ffprobe produced {ffprobe_df.shape[0]} frames while MB-type produced {mb_df.shape[0]} frames"
+    df = ffprobe_df.join(
+        mb_df.set_index("frame_num"), on="frame_num", rsuffix="_remove"
+    )
+    duplicated_columns = list(k for k in df.keys() if k.endswith("_remove"))
+    df.drop(columns=duplicated_columns, inplace=True)
+    return df
 
 
 def parse_ffprobe_streams_output(out, debug):
     # load the output
     parsed_out = json.loads(out)
-    assert "streams" in parsed_out, f"error: invalid ffprobe output (keys are {parsed_out.keys()})"
+    assert (
+        "streams" in parsed_out
+    ), f"error: invalid ffprobe output (keys are {parsed_out.keys()})"
     streams = parsed_out["streams"]
     return streams
+
 
 def parse_ffprobe_frames_output(out, debug):
     frame_dict = parse_ffprobe_output(out, debug)
     # punt if more than 1
-    assert len(frame_dict.keys()) == 1, f"error: video contains {len(frame_dict.keys())} video streams"
-    keys, vals = list(frame_dict.values())[0]
-    return keys, vals
+    assert (
+        len(frame_dict.keys()) == 1
+    ), f"error: video contains {len(frame_dict.keys())} video streams"
+    stream_id = list(frame_dict.keys())[0]
+    return frame_dict[stream_id]
 
 
 PREFERRED_KEY_ORDER = [
@@ -148,7 +156,9 @@ PREFERRED_KEY_ORDER = [
 def parse_ffprobe_output(out, debug):
     # load the output
     parsed_out = json.loads(out)
-    assert "frames" in parsed_out, f"error: invalid ffprobe output (keys are {parsed_out.keys()})"
+    assert (
+        "frames" in parsed_out
+    ), f"error: invalid ffprobe output (keys are {parsed_out.keys()})"
     frames = parsed_out["frames"]
 
     # select video frames and add derived values
@@ -198,8 +208,9 @@ def parse_ffprobe_output(out, debug):
         ffprobe_keys = [key for key in PREFERRED_KEY_ORDER if key in intersection]
         # then add the difference
         ffprobe_keys += list(difference)
-        # convert the dictionary into a list
-        ffprobe_vals = []
+
+        # convert the dictionary into a dataframe
+        df = pd.DataFrame(columns=ffprobe_keys)
         for frame in video_frames[stream_id]:
             vals = []
             for key in ffprobe_keys:
@@ -207,21 +218,9 @@ def parse_ffprobe_output(out, debug):
                 if not isinstance(val, (int, float, str)):
                     val = str(val)
                 vals.append(val)
-            ffprobe_vals.append(vals)
-        new_video_frames[stream_id] = (ffprobe_keys, ffprobe_vals)
-
+            df.loc[len(df.index)] = vals
+        new_video_frames[stream_id] = df
     return new_video_frames
-
-
-def sort_frames(keys, vals, field_name):
-    # sort the frames by <field_name> (using deco sort)
-    field_name_index = keys.index(field_name)
-    # 1. decorate the list
-    deco = [(val[field_name_index], val) for val in vals]
-    # 2. sort the decorated list
-    deco.sort()
-    # 3. undecorate the list
-    return [val for _, val in deco]
 
 
 def get_qp_statistics(qp_list):
@@ -234,7 +233,6 @@ def get_qp_statistics(qp_list):
 
 
 def parse_qp_information(out, debug):
-    qp_vals = []
     frame_num = -1
     pix_fmt = None
     pict_type = None
@@ -247,7 +245,16 @@ def parse_qp_information(out, debug):
     newframe_pattern = r"\[[^\]]+\] New frame, type: (?P<pict_type>.+)"
     qp_pattern = r"\[[^\]]+\] (?P<qp_str>[\d ]+)$"
 
-    qp_keys = ["frame_num", "pix_fmt", "pict_type", "qp_min", "qp_max", "qp_mean", "qp_var"]
+    qp_keys = [
+        "frame_num",
+        "pix_fmt",
+        "pict_type",
+        "qp_min",
+        "qp_max",
+        "qp_mean",
+        "qp_var",
+    ]
+    df = pd.DataFrame(columns=qp_keys)
 
     for line in out.splitlines():
         try:
@@ -264,9 +271,8 @@ def parse_qp_information(out, debug):
             # reinit: flush all previous data
             _resolution = match.group("resolution")
             pix_fmt = match.group("pix_fmt")
-            qp_vals = []
+            df.drop(df.index, inplace=True)
             frame_num = -1
-            qp_list = []
 
         elif "New frame, type:" in line:
             # [h264 @ 0x30d1a80] New frame, type: I
@@ -278,7 +284,15 @@ def parse_qp_information(out, debug):
             if frame_num != -1:
                 # get derived QP statistics
                 qp_min, qp_max, qp_mean, qp_var = get_qp_statistics(qp_list)
-                qp_vals.append([frame_num, pix_fmt, pict_type, qp_min, qp_max, qp_mean, qp_var])
+                df.loc[len(df.index)] = [
+                    frame_num,
+                    pix_fmt,
+                    pict_type,
+                    qp_min,
+                    qp_max,
+                    qp_mean,
+                    qp_var,
+                ]
                 qp_list = []
             # new frame
             pict_type = match.group("pict_type")
@@ -290,15 +304,23 @@ def parse_qp_information(out, debug):
             if not match:
                 continue
             qp_str = match.group("qp_str")
-            qp_list += [int(qp_str[i: i + 2]) for i in range(0, len(qp_str), 2)]
+            qp_list += [int(qp_str[i : i + 2]) for i in range(0, len(qp_str), 2)]
 
     # dump the last state
     if qp_list:
         qp_min, qp_max, qp_mean, qp_var = get_qp_statistics(qp_list)
-        qp_vals.append([frame_num, pix_fmt, pict_type, qp_min, qp_max, qp_mean, qp_var])
+        df.loc[len(df.index)] = [
+            frame_num,
+            pix_fmt,
+            pict_type,
+            qp_min,
+            qp_max,
+            qp_mean,
+            qp_var,
+        ]
         qp_list = []
 
-    return qp_keys, qp_vals
+    return df
 
 
 MB_TYPE_LIST = [
@@ -346,7 +368,6 @@ MB_STYPE_DICT = {
 
 
 def parse_mb_information(out, debug):
-    mb_vals = []
     frame_num = -1
     resolution = None
     pix_fmt = None
@@ -364,6 +385,7 @@ def parse_mb_information(out, debug):
     mb_only_keys += [f"mb_stype_{mb_stype}" for mb_stype in MB_STYPE_DICT]
     mb_keys = ["frame_num", "pix_fmt", "pict_type"]
     mb_keys += mb_only_keys
+    df = pd.DataFrame(columns=mb_keys)
 
     for line in out.splitlines():
         try:
@@ -380,7 +402,7 @@ def parse_mb_information(out, debug):
             # reinit: flush all previous data
             resolution = match.group("resolution")
             pix_fmt = match.group("pix_fmt")
-            mb_vals = []
+            df.drop(df.index, inplace=True)
             frame_num = -1
             mb_dict = {}
 
@@ -393,7 +415,7 @@ def parse_mb_information(out, debug):
             # store the old frame info
             if frame_num != -1:
                 mb_list = mb_dict_convert(mb_only_keys, mb_dict)
-                mb_vals.append([frame_num, pix_fmt, pict_type, *mb_list])
+                df.loc[len(df.index)] = [frame_num, pix_fmt, pict_type, *mb_list]
                 mb_dict = {}
             # new frame
             pict_type = match.group("pict_type")
@@ -408,27 +430,27 @@ def parse_mb_information(out, debug):
             # make sure mb_str length is a multiple of 3
             while (len(mb_str) % 3) != 0:
                 mb_str += " "
-            mb_row_list = [mb_str[i: i + 1] for i in range(0, len(mb_str), 3)]
-            row_mb_dict = {mb_type: mb_row_list.count(mb_type) for mb_type in mb_row_list}
+            mb_row_list = [mb_str[i : i + 1] for i in range(0, len(mb_str), 3)]
+            row_mb_dict = {
+                mb_type: mb_row_list.count(mb_type) for mb_type in mb_row_list
+            }
             for k, v in row_mb_dict.items():
                 mb_dict[k] = (mb_dict[k] if k in mb_dict else 0) + v
 
     # dump the last state
     if mb_dict:
         mb_list = mb_dict_convert(mb_only_keys, mb_dict)
-        mb_vals.append([frame_num, pix_fmt, pict_type, *mb_list])
+        df.loc[len(df.index)] = [frame_num, pix_fmt, pict_type, *mb_list]
         mb_dict = {}
 
-    return mb_keys, mb_vals
+    return df
 
 
 def mb_dict_convert(mb_only_keys, mb_dict):
     mb_info = {}
     # 1. read the mb_dict
     for mb_type in MB_TYPE_LIST:
-        mb_info[f"mb_type_{mb_type}"] = mb_dict.get(mb_type, 0) / sum(
-            mb_dict.values()
-        )
+        mb_info[f"mb_type_{mb_type}"] = mb_dict.get(mb_type, 0) / sum(mb_dict.values())
     # 2. add derived values
     for mb_stype in MB_STYPE_DICT.keys():
         mb_info[f"mb_stype_{mb_stype}"] = 0

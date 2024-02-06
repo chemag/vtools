@@ -88,9 +88,10 @@ def process_file(
 
     # add other sources of information
     if add_ffprobe_frames:
-        ffprobe_keys, ffprobe_vals = vtools_ffprobe.get_frames_information(
-            infile, debug=debug
-        )
+        ffprobe_df = vtools_ffprobe.get_frames_information(infile, debug=debug)
+        # TODO(chema): replace this with a dataframe join
+        ffprobe_keys = list(ffprobe_df.columns)
+        ffprobe_vals = list(list(l) for l in ffprobe_df.values)
         if not keys and not vals:
             keys, vals = ffprobe_keys, ffprobe_vals
         else:
@@ -105,7 +106,10 @@ def process_file(
             vals = [v1 + v2[1:] for (v1, v2) in zip(vals, ffprobe_vals)]
 
     if add_qp:
-        qp_keys, qp_vals = vtools_ffprobe.get_frames_qp_information(infile, debug=debug)
+        qp_df = vtools_ffprobe.get_frames_qp_information(infile, debug=debug)
+        # TODO(chema): replace this with a dataframe join
+        qp_keys = list(qp_df.columns)
+        qp_vals = list(list(l) for l in qp_df.values)
         if not keys and not vals:
             keys, vals = qp_keys, qp_vals
         else:
@@ -120,7 +124,10 @@ def process_file(
             vals = [v1 + v2[1:] for (v1, v2) in zip(vals, qp_vals)]
 
     if add_mb_type:
-        mb_keys, mb_vals = vtools_ffprobe.get_frames_mb_information(infile, debug=debug)
+        mb_df = vtools_ffprobe.get_frames_mb_information(infile, debug=debug)
+        # TODO(chema): replace this with a dataframe join
+        mb_keys = list(mb_df.columns)
+        mb_vals = list(list(l) for l in mb_df.values)
         if not keys and not vals:
             keys, vals = mb_keys, mb_vals
         else:
