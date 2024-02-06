@@ -78,7 +78,9 @@ def run_opencv_analysis(infile, add_mse, debug):
         if not ret:
             break
         # process image
-        val = [frame_num, ]
+        val = [
+            frame_num,
+        ]
         # get timestamps
         timestamp_ms = video_capture.get(cv2.CAP_PROP_POS_MSEC)
         delta_timestamp_ms = timestamp_ms - prev_timestamp_ms
@@ -118,9 +120,13 @@ def run_opencv_analysis(infile, add_mse, debug):
 def run_frame_analysis(**kwargs):
     # read input values
     debug = kwargs.get("debug", default_values["debug"])
-    add_opencv_analysis = kwargs.get("add_opencv_analysis", default_values["add_opencv_analysis"])
+    add_opencv_analysis = kwargs.get(
+        "add_opencv_analysis", default_values["add_opencv_analysis"]
+    )
     add_mse = kwargs.get("add_mse", default_values["add_mse"])
-    add_ffprobe_frames = kwargs.get("add_ffprobe_frames", default_values["add_ffprobe_frames"])
+    add_ffprobe_frames = kwargs.get(
+        "add_ffprobe_frames", default_values["add_ffprobe_frames"]
+    )
     add_qp = kwargs.get("add_qp", default_values["add_qp"])
     add_mb_type = kwargs.get("add_mb_type", default_values["add_mb_type"])
     infile = kwargs.get("infile", default_values["infile"])
@@ -157,13 +163,17 @@ def process_file(
 
     # add other sources of information
     if add_ffprobe_frames:
-        ffprobe_keys, ffprobe_vals = vtools_ffprobe.get_frames_information(infile, debug=debug)
+        ffprobe_keys, ffprobe_vals = vtools_ffprobe.get_frames_information(
+            infile, debug=debug
+        )
         if not keys and not vals:
             keys, vals = ffprobe_keys, ffprobe_vals
         else:
             # join the 2x sources of information
             # ensure the same number of frames in both sources
-            assert len(ffprobe_vals) == len(vals), f"error: ffprobe produced {len(ffprobe_vals)} frames while previously produced {len(vals)} frames"
+            assert len(ffprobe_vals) == len(
+                vals
+            ), f"error: ffprobe produced {len(ffprobe_vals)} frames while previously produced {len(vals)} frames"
             # join by frame_num in both lists
             # assume frame_num-sorted lists
             keys = keys + ffprobe_keys[1:]
@@ -176,7 +186,9 @@ def process_file(
         else:
             # join the 2x sources of information
             # ensure the same number of frames in both sources
-            assert len(qp_vals) == len(vals), f"error: ffprobe-qp produced {len(qp_vals)} frames while previously produced {len(vals)} frames"
+            assert len(qp_vals) == len(
+                vals
+            ), f"error: ffprobe-qp produced {len(qp_vals)} frames while previously produced {len(vals)} frames"
             # join by frame_num in both lists
             # assume frame_num-sorted lists
             keys = keys + qp_keys[1:]
@@ -189,7 +201,9 @@ def process_file(
         else:
             # join the 2x sources of information
             # ensure the same number of frames in both sources
-            assert len(mb_vals) == len(vals), f"error: ffprobe-mb produced {len(mb_vals)} frames while previously produced {len(vals)} frames"
+            assert len(mb_vals) == len(
+                vals
+            ), f"error: ffprobe-mb produced {len(mb_vals)} frames while previously produced {len(vals)} frames"
             # join by frame_num in both lists
             # assume frame_num-sorted lists
             keys = keys + mb_keys[1:]
@@ -364,7 +378,7 @@ def main(argv):
     # parse options
     options = get_options(argv)
     # get infile/outfile
-    if options.infile == "-"or options.infile is None:
+    if options.infile == "-" or options.infile is None:
         options.infile = "/dev/fd/0"
     if options.outfile == "-" or options.outfile is None:
         options.outfile = "/dev/fd/1"
