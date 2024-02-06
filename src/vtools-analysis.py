@@ -126,7 +126,28 @@ def run_frame_analysis(**kwargs):
     infile = kwargs.get("infile", default_values["infile"])
     outfile = kwargs.get("outfile", default_values["outfile"])
 
-    # process input
+    # process file
+    keys, vals = process_file(
+        infile,
+        add_opencv_analysis,
+        add_mse,
+        add_ffprobe_frames,
+        add_qp,
+        add_mb_type,
+        debug,
+    )
+    # write up to output file
+    with open(outfile, "w") as fd:
+        # write the header
+        fd.write(",".join(keys) + "\n")
+        for val in vals:
+            fd.write(",".join(str(v) for v in val) + "\n")
+
+
+# process input
+def process_file(
+    infile, add_opencv_analysis, add_mse, add_ffprobe_frames, add_qp, add_mb_type, debug
+):
     keys, vals = [], []
 
     # run the opencv analysis
@@ -173,13 +194,7 @@ def run_frame_analysis(**kwargs):
             # assume frame_num-sorted lists
             keys = keys + mb_keys[1:]
             vals = [v1 + v2[1:] for (v1, v2) in zip(vals, mb_vals)]
-
-    # calculate the output
-    with open(outfile, "w") as fd:
-        # write the header
-        fd.write(",".join(keys) + "\n")
-        for val in vals:
-            fd.write(",".join(str(v) for v in val) + "\n")
+    return keys, vals
 
 
 def get_options(argv):
