@@ -115,8 +115,13 @@ def summarize(infile, df):
     if "pict_type" in df:
         num_iframes = len(df[df["pict_type"] == "I"])
         num_pframes = len(df[df["pict_type"] == "P"])
+        num_bframes = len(df[df["pict_type"] == "B"])
         key = "p_i_ratio"
         val = num_pframes / num_iframes
+        keys.append(key)
+        vals.append(val)
+        key = "b_i_ratio"
+        val = num_bframes / num_iframes
         keys.append(key)
         vals.append(val)
     # add averaged fields
