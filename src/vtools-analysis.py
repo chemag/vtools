@@ -11,6 +11,8 @@ Runs an video filter.
 import argparse
 import math
 import numpy as np
+import os
+import pandas as pd
 import sys
 import importlib
 
@@ -33,10 +35,113 @@ default_values = {
     "add_ffprobe_frames": True,
     "add_qp": False,
     "add_mb_type": False,
+    "summary": False,
     "filter": "frames",
     "infile": None,
     "outfile": None,
 }
+
+
+SUMMARY_FIELDS_SINGLE = (
+    "pix_fmt",
+    "chroma_location",
+    "interlaced_frame",
+    "top_field_first",
+    "width",
+    "height",
+    "crop_left",
+    "crop_right",
+    "crop_bottom",
+    "crop_top",
+    "color_range",
+    "color_transfer",
+    "color_primaries",
+    "color_space",
+)
+
+
+SUMMARY_FIELDS_AVERAGE = (
+    "delta_timestamp_ms",
+    "duration_time",
+    "framerate",
+    "pkt_size",
+    "bpp",
+    "bitrate",
+    "qp_mean",
+    "mb_type_P",
+    "mb_type_A",
+    "mb_type_i",
+    "mb_type_I",
+    "mb_type_d",
+    "mb_type_D",
+    "mb_type_g",
+    "mb_type_G",
+    "mb_type_S",
+    "mb_type_>",
+    "mb_type_<",
+    "mb_type_X",
+    "mb_stype_intra",
+    "mb_stype_intra_pcm",
+    "mb_stype_inter",
+    "mb_stype_skip_direct",
+    "mb_stype_other",
+    "mb_stype_gmc",
+)
+
+
+def summarize(infile, df):
+    keys, vals = ["infile", "num_frames", "file_size_bytes"], [
+        infile,
+        len(df),
+        os.stat(infile).st_size,
+    ]
+    # add single-value fields
+    for key in SUMMARY_FIELDS_SINGLE:
+        if key not in df:
+            # field not in analysis
+            continue
+        assert (
+            len(df[key].unique()) == 1
+        ), f"error: more than 1 value for {key}: {list(df[key].unique())}"
+        val = df[key].unique()[0]
+        keys.append(key)
+        vals.append(val)
+    # add derived values
+    if "pkt_duration_time" in df:
+        key = "file_duration_time"
+        val = df["pkt_duration_time"].astype(float).sum()
+        keys.append(key)
+        vals.append(val)
+    if "pict_type" in df:
+        num_iframes = len(df[df["pict_type"] == "I"])
+        num_pframes = len(df[df["pict_type"] == "P"])
+        key = "p_i_ratio"
+        val = num_pframes / num_iframes
+        keys.append(key)
+        vals.append(val)
+    # add averaged fields
+    for key in SUMMARY_FIELDS_AVERAGE:
+        if key not in df:
+            # field not in analysis
+            continue
+        val = df[key].astype(float).mean()
+        keys.append(key)
+        vals.append(val)
+    # add max/min fields
+    key = "qp_min"
+    if key in df:
+        val = df[key].min()
+        keys.append(key)
+        vals.append(val)
+    key = "qp_max"
+    if key in df:
+        val = df[key].max()
+        keys.append(key)
+        vals.append(val)
+    # return summary dataframe
+    df = pd.DataFrame(columns=keys)
+    df.loc[len(df.index)] = vals
+    return df
 
 
 def run_frame_analysis(**kwargs):
@@ -51,6 +156,7 @@ def run_frame_analysis(**kwargs):
     )
     add_qp = kwargs.get("add_qp", default_values["add_qp"])
     add_mb_type = kwargs.get("add_mb_type", default_values["add_mb_type"])
+    summary = kwargs.get("summary", default_values["summary"])
     infile = kwargs.get("infile", default_values["infile"])
     outfile = kwargs.get("outfile", default_values["outfile"])
 
@@ -64,6 +170,9 @@ def run_frame_analysis(**kwargs):
         add_mb_type,
         debug,
     )
+    # implement summary mode
+    if summary:
+        df = summarize(infile, df)
     # write up to output file
     df.to_csv(outfile, index=False)
 
@@ -254,6 +363,13 @@ def get_options(argv):
         const=False,
         help="Do not add MB type columns (h264 only)%s"
         % (" [default]" if not default_values["add_mb_type"] else ""),
+    )
+    parser.add_argument(
+        "--summary",
+        dest="summary",
+        action="store_true",
+        default=default_values["summary"],
+        help="Summary mode",
     )
     parser.add_argument(
         "--filter",
