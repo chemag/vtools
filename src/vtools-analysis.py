@@ -55,7 +55,7 @@ def run_frame_analysis(**kwargs):
     outfile = kwargs.get("outfile", default_values["outfile"])
 
     # process file
-    keys, vals = process_file(
+    df = process_file(
         infile,
         add_opencv_analysis,
         add_mse,
@@ -65,82 +65,70 @@ def run_frame_analysis(**kwargs):
         debug,
     )
     # write up to output file
-    with open(outfile, "w") as fd:
-        # write the header
-        fd.write(",".join(keys) + "\n")
-        for val in vals:
-            fd.write(",".join(str(v) for v in val) + "\n")
+    df.to_csv(outfile, index=False)
 
 
 # process input
 def process_file(
     infile, add_opencv_analysis, add_mse, add_ffprobe_frames, add_qp, add_mb_type, debug
 ):
-    keys, vals = [], []
+    df = None
 
-    # run the opencv analysis
+    # run opencv analysis
     if add_opencv_analysis:
         opencv_df = vtools_opencv.run_opencv_analysis(infile, add_mse, debug)
-        # TODO(chema): replace this with a dataframe join
-        opencv_keys = list(opencv_df.columns)
-        opencv_vals = list(list(l) for l in opencv_df.values)
-        keys, vals = opencv_keys, opencv_vals
+        # join 2x dataframes
+        df = (
+            opencv_df
+            if df is None
+            else df.join(
+                opencv_df.set_index("frame_num"), on="frame_num", rsuffix="_remove"
+            )
+        )
+        duplicated_columns = list(k for k in df.keys() if k.endswith("_remove"))
+        df.drop(columns=duplicated_columns, inplace=True)
 
     # add other sources of information
     if add_ffprobe_frames:
         ffprobe_df = vtools_ffprobe.get_frames_information(infile, debug=debug)
-        # TODO(chema): replace this with a dataframe join
-        ffprobe_keys = list(ffprobe_df.columns)
-        ffprobe_vals = list(list(l) for l in ffprobe_df.values)
-        if not keys and not vals:
-            keys, vals = ffprobe_keys, ffprobe_vals
-        else:
-            # join the 2x sources of information
-            # ensure the same number of frames in both sources
-            assert len(ffprobe_vals) == len(
-                vals
-            ), f"error: ffprobe produced {len(ffprobe_vals)} frames while previously produced {len(vals)} frames"
-            # join by frame_num in both lists
-            # assume frame_num-sorted lists
-            keys = keys + ffprobe_keys[1:]
-            vals = [v1 + v2[1:] for (v1, v2) in zip(vals, ffprobe_vals)]
+        # join 2x dataframes
+        df = (
+            ffprobe_df
+            if df is None
+            else df.join(
+                ffprobe_df.set_index("frame_num"), on="frame_num", rsuffix="_remove"
+            )
+        )
+        duplicated_columns = list(k for k in df.keys() if k.endswith("_remove"))
+        df.drop(columns=duplicated_columns, inplace=True)
 
     if add_qp:
         qp_df = vtools_ffprobe.get_frames_qp_information(infile, debug=debug)
-        # TODO(chema): replace this with a dataframe join
-        qp_keys = list(qp_df.columns)
-        qp_vals = list(list(l) for l in qp_df.values)
-        if not keys and not vals:
-            keys, vals = qp_keys, qp_vals
-        else:
-            # join the 2x sources of information
-            # ensure the same number of frames in both sources
-            assert len(qp_vals) == len(
-                vals
-            ), f"error: ffprobe-qp produced {len(qp_vals)} frames while previously produced {len(vals)} frames"
-            # join by frame_num in both lists
-            # assume frame_num-sorted lists
-            keys = keys + qp_keys[1:]
-            vals = [v1 + v2[1:] for (v1, v2) in zip(vals, qp_vals)]
+        # join 2x dataframes
+        df = (
+            qp_df
+            if df is None
+            else df.join(
+                qp_df.set_index("frame_num"), on="frame_num", rsuffix="_remove"
+            )
+        )
+        duplicated_columns = list(k for k in df.keys() if k.endswith("_remove"))
+        df.drop(columns=duplicated_columns, inplace=True)
 
     if add_mb_type:
         mb_df = vtools_ffprobe.get_frames_mb_information(infile, debug=debug)
-        # TODO(chema): replace this with a dataframe join
-        mb_keys = list(mb_df.columns)
-        mb_vals = list(list(l) for l in mb_df.values)
-        if not keys and not vals:
-            keys, vals = mb_keys, mb_vals
-        else:
-            # join the 2x sources of information
-            # ensure the same number of frames in both sources
-            assert len(mb_vals) == len(
-                vals
-            ), f"error: ffprobe-mb produced {len(mb_vals)} frames while previously produced {len(vals)} frames"
-            # join by frame_num in both lists
-            # assume frame_num-sorted lists
-            keys = keys + mb_keys[1:]
-            vals = [v1 + v2[1:] for (v1, v2) in zip(vals, mb_vals)]
-    return keys, vals
+        # join 2x dataframes
+        df = (
+            mb_df
+            if df is None
+            else df.join(
+                mb_df.set_index("frame_num"), on="frame_num", rsuffix="_remove"
+            )
+        )
+        duplicated_columns = list(k for k in df.keys() if k.endswith("_remove"))
+        df.drop(columns=duplicated_columns, inplace=True)
+
+    return df
 
 
 def get_options(argv):
