@@ -11,6 +11,7 @@ Runs an opencv video filter.
 import cv2
 import math
 import numpy as np
+import pandas as pd
 import sys
 
 PSNR_K = math.log10(2**8 - 1)
@@ -44,6 +45,12 @@ def run_opencv_analysis(infile, add_mse, debug):
     if debug > 0:
         print(f"input: {infile = } {size = } {fourcc_input = } {fps = }")
 
+    # get the tuple keys
+    opencv_keys = ["frame_num", "timestamp_ms", "delta_timestamp_ms"]
+    if add_mse:
+        opencv_keys += ["log10_msey", "psnr_y", "diff_msey", "diff_mseu", "diff_msev"]
+    df = pd.DataFrame(columns=opencv_keys)
+
     # process the input
     opencv_vals = []
     prev_timestamp_ms = video_capture.get(cv2.CAP_PROP_POS_MSEC)
@@ -55,13 +62,13 @@ def run_opencv_analysis(infile, add_mse, debug):
         if not ret:
             break
         # process image
-        val = [
+        vals = [
             frame_num,
         ]
         # get timestamps
         timestamp_ms = video_capture.get(cv2.CAP_PROP_POS_MSEC)
         delta_timestamp_ms = timestamp_ms - prev_timestamp_ms
-        val += [timestamp_ms, delta_timestamp_ms]
+        vals += [timestamp_ms, delta_timestamp_ms]
         if add_mse:
             # get mse
             diff_msey, diff_mseu, diff_msev = calculate_diff_mse(img, prev_img)
@@ -76,19 +83,14 @@ def run_opencv_analysis(infile, add_mse, debug):
                 if ((log10_msey is None) or (log10_msey == "-inf"))
                 else 20 * PSNR_K - 10 * log10_msey
             )
-            val += [log10_msey, psnr_y, diff_msey, diff_mseu, diff_msev]
-        opencv_vals.append(val)
+            vals += [log10_msey, psnr_y, diff_msey, diff_mseu, diff_msev]
+        df.loc[len(df.index)] = vals
         # update previous info
         prev_timestamp_ms = timestamp_ms
         prev_img = img
         frame_num += 1
 
-    # get the tuple keys
-    opencv_keys = ["frame_num", "timestamp_ms", "delta_timestamp_ms"]
-    if add_mse:
-        opencv_keys += ["log10_msey", "psnr_y", "diff_msey", "diff_mseu", "diff_msev"]
-
     # release the video objects
     video_capture.release()
 
-    return opencv_keys, opencv_vals
+    return df

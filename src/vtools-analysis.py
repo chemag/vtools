@@ -80,9 +80,10 @@ def process_file(
 
     # run the opencv analysis
     if add_opencv_analysis:
-        opencv_keys, opencv_vals = vtools_opencv.run_opencv_analysis(
-            infile, add_mse, debug
-        )
+        opencv_df = vtools_opencv.run_opencv_analysis(infile, add_mse, debug)
+        # TODO(chema): replace this with a dataframe join
+        opencv_keys = list(opencv_df.columns)
+        opencv_vals = list(list(l) for l in opencv_df.values)
         keys, vals = opencv_keys, opencv_vals
 
     # add other sources of information
