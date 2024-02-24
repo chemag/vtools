@@ -30,7 +30,7 @@ def run_ffprobe_command(infile, analysis="frames", **kwargs):
         command += " -debug qp"
     elif add_mb_type:
         command += " -debug mb_type"
-    command += f" {infile}"
+    command += f" '{infile}'"
     returncode, out, err = run(command, debug=debug)
     assert returncode == 0, f'error running "{command}"'
     return out, err
