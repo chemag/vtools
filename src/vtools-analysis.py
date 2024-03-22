@@ -37,7 +37,7 @@ default_values = {
     "add_mb_type": False,
     "summary": False,
     "filter": "frames",
-    "infile": None,
+    "infile_list": [],
     "outfile": None,
 }
 
@@ -162,7 +162,7 @@ def run_frame_analysis(**kwargs):
     add_qp = kwargs.get("add_qp", default_values["add_qp"])
     add_mb_type = kwargs.get("add_mb_type", default_values["add_mb_type"])
     summary = kwargs.get("summary", default_values["summary"])
-    infile_list = kwargs.get("infile", default_values["infile"])
+    infile_list = kwargs.get("infile_list", default_values["infile_list"])
     outfile = kwargs.get("outfile", default_values["outfile"])
 
     # multiple infiles only supported in summary mode
@@ -170,7 +170,7 @@ def run_frame_analysis(**kwargs):
         len(infile_list) <= 1 or summary
     ), "error: multiple infiles only supported in summary mode"
 
-    # process file
+    # process input files
     df_list = []
     for infile in infile_list:
         df = process_file(
@@ -404,12 +404,10 @@ def get_options(argv):
         % (" | ".join("{}: {}".format(k, v) for k, v in FILTER_CHOICES.items())),
     )
     parser.add_argument(
-        "-i",
-        "--infile",
-        dest="infile",
+        dest="infile_list",
         type=str,
         nargs="+",
-        default=default_values["infile"],
+        default=default_values["infile_list"],
         metavar="input-file",
         help="input file",
     )
@@ -435,9 +433,7 @@ def get_options(argv):
 def main(argv):
     # parse options
     options = get_options(argv)
-    # get infile/outfile
-    if options.infile == "-" or options.infile is None:
-        options.infile = "/dev/fd/0"
+    # get outfile
     if options.outfile == "-" or options.outfile is None:
         options.outfile = "/dev/fd/1"
     # print results
