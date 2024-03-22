@@ -51,7 +51,12 @@ def process_diff(frame2, frame1, frame_counter1, width, height, dfid, options):
         diff.astype(np.uint8).tofile(dfid)
     mse = (diff**2).mean()
     mse /= width * height
-    return frame_counter1, frame_counter1 + 1, mse, math.log10(mse) if mse != 0.0 else "-inf"
+    return (
+        frame_counter1,
+        frame_counter1 + 1,
+        mse,
+        math.log10(mse) if mse != 0.0 else "-inf",
+    )
 
 
 def diff_consecutive_frames(options):
