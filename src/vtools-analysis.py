@@ -2,7 +2,7 @@
 
 """vtools-analysis.py module description.
 
-Runs an video filter.
+Analyzes a series of video files.
 """
 # https://docs.opencv.org/3.4/dd/d43/tutorial_py_video_display.html
 # https://docs.opencv.org/3.1.0/d7/d9e/tutorial_video_write.html
