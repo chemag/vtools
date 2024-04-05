@@ -166,8 +166,8 @@ def run_frame_analysis(**kwargs):
     outfile = kwargs.get("outfile", default_values["outfile"])
 
     # multiple infiles only supported in summary mode
-    assert (
-        len(infile_list) <= 1 or summary
+    assert not (
+        len(infile_list) > 1 and summary
     ), "error: multiple infiles only supported in summary mode"
 
     # process input files
