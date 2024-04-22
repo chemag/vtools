@@ -25,6 +25,7 @@ PSNR_K = math.log10(2**8 - 1)
 FILTER_CHOICES = {
     "help": "show help options",
     "frames": "per-frame analysis",
+    "summary": "per-video analysis",
 }
 
 default_values = {
@@ -35,7 +36,6 @@ default_values = {
     "add_ffprobe_frames": True,
     "add_qp": False,
     "add_mb_type": False,
-    "summary": False,
     "filter": "frames",
     "infile_list": [],
     "outfile": None,
@@ -161,13 +161,13 @@ def run_frame_analysis(**kwargs):
     )
     add_qp = kwargs.get("add_qp", default_values["add_qp"])
     add_mb_type = kwargs.get("add_mb_type", default_values["add_mb_type"])
-    summary = kwargs.get("summary", default_values["summary"])
+    filter_ = kwargs.get("filter", default_values["filter"])
     infile_list = kwargs.get("infile_list", default_values["infile_list"])
     outfile = kwargs.get("outfile", default_values["outfile"])
 
     # multiple infiles only supported in summary mode
     assert not (
-        len(infile_list) > 1 and summary
+        len(infile_list) > 1 and filter_ == "summary"
     ), "error: multiple infiles only supported in summary mode"
 
     # process input files
@@ -183,11 +183,11 @@ def run_frame_analysis(**kwargs):
             debug,
         )
         # implement summary mode
-        if summary:
+        if filter_ == "summary":
             df = summarize(infile, df)
         df_list.append(df)
 
-    if summary:
+    if filter_ == "summary":
         # coalesce summary entries
         df = None
         for tmp_df in df_list:
@@ -386,13 +386,6 @@ def get_options(argv):
         % (" [default]" if not default_values["add_mb_type"] else ""),
     )
     parser.add_argument(
-        "--summary",
-        dest="summary",
-        action="store_true",
-        default=default_values["summary"],
-        help="Summary mode",
-    )
-    parser.add_argument(
         "--filter",
         action="store",
         type=str,
@@ -445,7 +438,8 @@ def main(argv):
     if options.debug > 0:
         print(options)
 
-    run_frame_analysis(**vars(options))
+    if options.filter in ("frames", "summary"):
+        run_frame_analysis(**vars(options))
 
 
 if __name__ == "__main__":
