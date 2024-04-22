@@ -399,9 +399,14 @@ def get_options(argv):
         dest="filter",
         default=default_values["filter"],
         choices=FILTER_CHOICES.keys(),
-        metavar="{%s}" % (" | ".join("{}".format(k) for k in FILTER_CHOICES.keys())),
+        metavar="{%s}" % (" | ".join(f"{k}" for k in FILTER_CHOICES.keys())),
         help="%s"
-        % (" | ".join("{}: {}".format(k, v) for k, v in FILTER_CHOICES.items())),
+        % (
+            " | ".join(
+                f"{k}: {v}{' [default]' if k == default_values['filter'] else ''}"
+                for k, v in FILTER_CHOICES.items()
+            )
+        ),
     )
     parser.add_argument(
         dest="infile_list",
