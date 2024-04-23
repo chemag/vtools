@@ -1,6 +1,9 @@
 #!/usr/bin/env python3
 
-"""common.py: Common vtools code."""
+"""vtools-common.py: Common vtools code.
+
+Module that contains common code.
+"""
 
 import subprocess
 import sys

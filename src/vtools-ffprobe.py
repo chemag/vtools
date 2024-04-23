@@ -3,13 +3,14 @@
 """ffprobe.py: A wrapper around ffprobe."""
 
 
+import importlib
 import json
 import numpy as np
 import pandas as pd
 import re
 import sys
 
-from common import run
+vtools_common = importlib.import_module("vtools-common")
 
 
 def run_ffprobe_command(infile, analysis="frames", **kwargs):
@@ -31,7 +32,7 @@ def run_ffprobe_command(infile, analysis="frames", **kwargs):
     elif add_mb_type:
         command += " -debug mb_type"
     command += f" '{infile}'"
-    returncode, out, err = run(command, debug=debug)
+    returncode, out, err = vtools_common.run(command, debug=debug)
     assert returncode == 0, f'error running "{command}"'
     return out, err
 
