@@ -9,13 +9,14 @@ Analyzes a series of video files.
 
 
 import argparse
+import importlib
 import math
 import numpy as np
 import os
 import pandas as pd
 import sys
-import importlib
 
+vtools_common = importlib.import_module("vtools-common")
 vtools_ffprobe = importlib.import_module("vtools-ffprobe")
 vtools_opencv = importlib.import_module("vtools-opencv")
 
@@ -36,6 +37,7 @@ default_values = {
     "add_ffprobe_frames": True,
     "add_qp": False,
     "add_mb_type": False,
+    "qpextract_bin": None,
     "filter": "frames",
     "infile_list": [],
     "outfile": None,
@@ -149,45 +151,35 @@ def summarize(infile, df):
     return df
 
 
-def run_frame_analysis(**kwargs):
+def run_frame_analysis(options):
     # read input values
-    debug = kwargs.get("debug", default_values["debug"])
-    add_opencv_analysis = kwargs.get(
-        "add_opencv_analysis", default_values["add_opencv_analysis"]
-    )
-    add_mse = kwargs.get("add_mse", default_values["add_mse"])
-    add_ffprobe_frames = kwargs.get(
-        "add_ffprobe_frames", default_values["add_ffprobe_frames"]
-    )
-    add_qp = kwargs.get("add_qp", default_values["add_qp"])
-    add_mb_type = kwargs.get("add_mb_type", default_values["add_mb_type"])
-    filter_ = kwargs.get("filter", default_values["filter"])
-    infile_list = kwargs.get("infile_list", default_values["infile_list"])
-    outfile = kwargs.get("outfile", default_values["outfile"])
-
+    config_dict = {
+        k: v for (k, v) in vars(options).items() if k in vtools_common.CONFIG_KEY_LIST
+    }
     # multiple infiles only supported in summary mode
     assert not (
-        len(infile_list) > 1 and filter_ == "summary"
+        len(options.infile_list) > 1 and options.filter == "summary"
     ), "error: multiple infiles only supported in summary mode"
 
     # process input files
     df_list = []
-    for infile in infile_list:
+    for infile in options.infile_list:
         df = process_file(
             infile,
-            add_opencv_analysis,
-            add_mse,
-            add_ffprobe_frames,
-            add_qp,
-            add_mb_type,
-            debug,
+            options.add_opencv_analysis,
+            options.add_mse,
+            options.add_ffprobe_frames,
+            options.add_qp,
+            options.add_mb_type,
+            config_dict,
+            options.debug,
         )
         # implement summary mode
-        if filter_ == "summary":
+        if options.filter == "summary":
             df = summarize(infile, df)
         df_list.append(df)
 
-    if filter_ == "summary":
+    if options.filter == "summary":
         # coalesce summary entries
         df = None
         for tmp_df in df_list:
@@ -195,12 +187,19 @@ def run_frame_analysis(**kwargs):
     else:
         df = df_list[0]
     # write up to output file
-    df.to_csv(outfile, index=False)
+    df.to_csv(options.outfile, index=False)
 
 
 # process input
 def process_file(
-    infile, add_opencv_analysis, add_mse, add_ffprobe_frames, add_qp, add_mb_type, debug
+    infile,
+    add_opencv_analysis,
+    add_mse,
+    add_ffprobe_frames,
+    add_qp,
+    add_mb_type,
+    config_dict,
+    debug,
 ):
     df = None
 
@@ -220,7 +219,7 @@ def process_file(
 
     # add other sources of information
     if add_ffprobe_frames:
-        ffprobe_df = vtools_ffprobe.get_frames_information(infile, debug=debug)
+        ffprobe_df = vtools_ffprobe.get_frames_information(infile, config_dict, debug)
         # join 2x dataframes
         df = (
             ffprobe_df
@@ -233,7 +232,7 @@ def process_file(
         df.drop(columns=duplicated_columns, inplace=True)
 
     if add_qp:
-        qp_df = vtools_ffprobe.get_frames_qp_information(infile, debug=debug)
+        qp_df = vtools_ffprobe.get_frames_qp_information(infile, config_dict, debug)
         if qp_df is not None:
             # join 2x dataframes
             df = (
@@ -247,7 +246,7 @@ def process_file(
             df.drop(columns=duplicated_columns, inplace=True)
 
     if add_mb_type:
-        mb_df = vtools_ffprobe.get_frames_mb_information(infile, debug=debug)
+        mb_df = vtools_ffprobe.get_frames_mb_information(infile, config_dict, debug)
         # join 2x dataframes
         df = (
             mb_df
@@ -387,6 +386,14 @@ def get_options(argv):
         % (" [default]" if not default_values["add_mb_type"] else ""),
     )
     parser.add_argument(
+        "--qpextract-bin",
+        action="store",
+        type=str,
+        dest="qpextract_bin",
+        default=default_values["qpextract_bin"],
+        help="Path to the qpextract bin",
+    )
+    parser.add_argument(
         "--filter",
         action="store",
         type=str,
@@ -440,7 +447,7 @@ def main(argv):
         print(options)
 
     if options.filter in ("frames", "summary"):
-        run_frame_analysis(**vars(options))
+        run_frame_analysis(options)
 
 
 if __name__ == "__main__":

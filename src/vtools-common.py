@@ -8,6 +8,8 @@ Module that contains common code.
 import subprocess
 import sys
 
+CONFIG_KEY_LIST = ("qpextract_bin",)
+
 
 class InvalidCommand(Exception):
     pass

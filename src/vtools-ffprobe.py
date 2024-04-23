@@ -4,11 +4,13 @@
 
 
 import importlib
+import io
 import json
 import numpy as np
 import pandas as pd
 import re
 import sys
+import tempfile
 
 vtools_common = importlib.import_module("vtools-common")
 
@@ -37,16 +39,15 @@ def run_ffprobe_command(infile, analysis="frames", **kwargs):
     return out, err
 
 
-def get_info(infile, **kwargs):
-    out, err = run_ffprobe_command(infile, analysis="streams", **kwargs)
+def get_info(infile, config_dict, debug):
+    out, err = run_ffprobe_command(infile, analysis="streams", debug=debug)
     # parse the output
-    streams = parse_ffprobe_streams_output(out, **kwargs)
+    streams = parse_ffprobe_streams_output(out, config_dict, debug)
     return streams
 
 
-def get_frames_information(infile, **kwargs):
-    debug = kwargs.get("debug", 0)
-    out, err = run_ffprobe_command(infile, **kwargs)
+def get_frames_information(infile, config_dict, debug):
+    out, err = run_ffprobe_command(infile, debug=debug)
     # parse the output
     df = parse_ffprobe_frames_output(out, debug)
     # sort the frames
@@ -54,42 +55,104 @@ def get_frames_information(infile, **kwargs):
     return df
 
 
-def get_frames_qp_information(infile, **kwargs):
-    debug = kwargs.get("debug", 0)
+QPEXTRACT_FIELDS = ("qp_avg", "qp_stddev", "qp_num", "qp_min", "qp_max")
+CTU_SIZE_VALUES = (8, 16, 32, 64)
+
+
+def parse_qpextract_bin_output(output, mode):
+    df = pd.read_csv(io.StringIO(output.decode("ascii")))
+    if mode in ("qpy", "qpcb", "qpcr"):
+        # drop numeric columns
+        df = df.drop(columns=list(str(i) for i in range(53)))
+        rename_suffix = ("num", "min", "max", "avg", "stddev")
+        rename_dict = {f"qp_{suffix}": f"{mode}:{suffix}" for suffix in rename_suffix}
+        df = df.rename(columns=rename_dict)
+        return df
+    elif mode == "ctu":
+        # get statistics
+        df_out = pd.DataFrame(columns=("frame", "ctu:mean", "ctu:stddev"))
+        for frame in df["frame"].unique():
+            df_out.loc[df_out.size] = [
+                frame,
+                df[df["frame"] == frame]["size"].mean(),
+                df[df["frame"] == frame]["size"].std(),
+            ]
+        df_out.frame = df_out.frame.apply(int)
+        return df_out
+
+
+def get_frames_qp_information(infile, config_dict, debug):
     # check the file is h264
-    file_info = get_info(infile, debug=debug)
+    file_info = get_info(infile, config_dict, debug)
+    video_codec_name = None
     for stream_info in file_info:
         if stream_info["codec_type"] == "audio":
             continue
         elif stream_info["codec_type"] == "video":
-            if stream_info["codec_name"] == "h264":
-                break
-            # ffmpeg QP mode only works on h264
-            continue
+            video_codec_name = stream_info["codec_name"]
+            break
     else:
         # no video stream
         return None
-    # run the QP analysis command
-    out, err = run_ffprobe_command(infile, add_qp=True, **kwargs)
-    # parse the output
-    ffprobe_df = parse_ffprobe_frames_output(out, debug)
-    qp_df = parse_qp_information(err, debug)
-    # join the output
-    # ensure the same number of frames in both sources
-    assert (
-        ffprobe_df.shape[0] == qp_df.shape[0]
-    ), f"error: ffprobe produced {ffprobe_df.shape[0]} frames while QP produced {qp_df.shape[0]} frames"
-    df = ffprobe_df.join(
-        qp_df.set_index("frame_num"), on="frame_num", rsuffix="_remove"
-    )
-    duplicated_columns = list(k for k in df.keys() if k.endswith("_remove"))
-    df.drop(columns=duplicated_columns, inplace=True)
+    if video_codec_name == "h264":
+        # 1. use ffmpeg QP mode (h264 only)
+        # run the QP analysis command
+        out, err = run_ffprobe_command(infile, add_qp=True, debug=debug)
+        # parse the output
+        ffprobe_df = parse_ffprobe_frames_output(out, debug)
+        qp_df = parse_qp_information(err, debug)
+        # join the output
+        # ensure the same number of frames in both sources
+        assert (
+            ffprobe_df.shape[0] == qp_df.shape[0]
+        ), f"error: ffprobe produced {ffprobe_df.shape[0]} frames while QP produced {qp_df.shape[0]} frames"
+        df = ffprobe_df.join(
+            qp_df.set_index("frame_num"), on="frame_num", rsuffix="_remove"
+        )
+        duplicated_columns = list(k for k in df.keys() if k.endswith("_remove"))
+        df.drop(columns=duplicated_columns, inplace=True)
+    elif video_codec_name == "hevc":
+        # 2. use qpextract analysis (h265 only)
+        qpextract_bin = config_dict.get("qpextract_bin", None)
+        if qpextract_bin is None:
+            return None
+        # qpextract needs an Annex B file
+        tmp265 = tempfile.NamedTemporaryFile(prefix="vtools.hevc.", suffix=".265").name
+        command = f"ffmpeg -i {infile} -vcodec copy -an {tmp265}"
+        returncode, out, err = vtools_common.run(command, debug=debug)
+        assert returncode == 0, f"error in {command}\n{err}"
+        # extract the QP-Y info for the first tile
+        command = f"{qpextract_bin} --qpymode -w -i {tmp265}"
+        returncode, out, err = vtools_common.run(command, debug=debug)
+        assert returncode == 0, f"error in {command}\n{err}"
+        df = parse_qpextract_bin_output(out, "qpy")
+        # extract the QP-Cb info for the first tile
+        command = f"{qpextract_bin} --qpcbmode -w -i {tmp265}"
+        returncode, out, err = vtools_common.run(command, debug=debug)
+        assert returncode == 0, f"error in {command}\n{err}"
+        qpcb_df = parse_qpextract_bin_output(out, "qpcb")
+        df = df.join(qpcb_df.set_index("frame"), on="frame", rsuffix="_remove")
+        # extract the QP-Cr info for the first tile
+        command = f"{qpextract_bin} --qpcrmode -w -i {tmp265}"
+        returncode, out, err = vtools_common.run(command, debug=debug)
+        assert returncode == 0, f"error in {command}\n{err}"
+        qpcr_df = parse_qpextract_bin_output(out, "qpcr")
+        df = df.join(qpcr_df.set_index("frame"), on="frame", rsuffix="_remove")
+        # extract the CTU info for the first tile
+        command = f"{qpextract_bin} --ctumode -w -i {tmp265}"
+        returncode, out, err = vtools_common.run(command, debug=debug)
+        assert returncode == 0, f"error in {command}\n{err}"
+        ctu_df = parse_qpextract_bin_output(out, "ctu")
+        df = df.join(ctu_df.set_index("frame"), on="frame", rsuffix="_remove")
+        df = df.rename(columns={"frame": "frame_num"})
+    else:
+        return None
+
     return df
 
 
-def get_frames_mb_information(infile, **kwargs):
-    debug = kwargs.get("debug", 0)
-    out, err = run_ffprobe_command(infile, add_mb_type=True, **kwargs)
+def get_frames_mb_information(infile, config_dict, debug):
+    out, err = run_ffprobe_command(infile, add_mb_type=True, debug=debug)
     # parse the output
     ffprobe_df = parse_ffprobe_frames_output(out, debug)
     mb_df = parse_mb_information(err, debug)
@@ -106,7 +169,7 @@ def get_frames_mb_information(infile, **kwargs):
     return df
 
 
-def parse_ffprobe_streams_output(out, debug):
+def parse_ffprobe_streams_output(out, config_dict, debug):
     # load the output
     parsed_out = json.loads(out)
     assert (
@@ -344,10 +407,6 @@ def parse_qp_information(out, debug):
             if not match:
                 continue
             qp_str = match.group("qp_str")
-            import code
-
-            code.interact(local=locals())  # python gdb/debugging
-
             qp_list += [int(qp_str[i : i + 2]) for i in range(0, len(qp_str), 2)]
 
     # dump the last state
