@@ -157,8 +157,8 @@ def run_frame_analysis(options):
         k: v for (k, v) in vars(options).items() if k in vtools_common.CONFIG_KEY_LIST
     }
     # multiple infiles only supported in summary mode
-    assert not (
-        len(options.infile_list) > 1 and options.filter == "summary"
+    assert (
+        len(options.infile_list) == 1 or options.filter == "summary"
     ), "error: multiple infiles only supported in summary mode"
 
     # process input files
