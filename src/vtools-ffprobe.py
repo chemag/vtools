@@ -55,6 +55,20 @@ def get_frames_information(infile, **kwargs):
 
 def get_frames_qp_information(infile, **kwargs):
     debug = kwargs.get("debug", 0)
+    # check the file is h264
+    file_info = get_info(infile, debug=debug)
+    for stream_info in file_info:
+        if stream_info["codec_type"] == "audio":
+            continue
+        elif stream_info["codec_type"] == "video":
+            if stream_info["codec_name"] == "h264":
+                break
+            # ffmpeg QP mode only works on h264
+            continue
+    else:
+        # no video stream
+        return None
+    # run the QP analysis command
     out, err = run_ffprobe_command(infile, add_qp=True, **kwargs)
     # parse the output
     ffprobe_df = parse_ffprobe_frames_output(out, debug)
@@ -315,11 +329,24 @@ def parse_qp_information(out, debug):
             frame_num += 1
 
         else:
+            # old format
             # [h264 @ 0x30d1a80] 3535353535353535353535...
+            # new format
+            # [h264 @ 0x9cabc0]      0               128             256  ... 1664            1792
+            # [h264 @ 0x9cabc0]    0 343434343434343434343434343435373737 ... 7404040404040393940
+            # [h264 @ 0x9cabc0]   16 363636363936363636363636363636363633 ... 3333333333333363636
+            # [h264 @ 0x9cabc0]   32 404040404040404039373737373636363636 ... 5353535353535353535
+            # [h264 @ 0x9cabc0]   48 363636363636363636363636363636363636 ... 6363636363434343434
+            # ...
+            # [h264 @ 0x9cabc0]  784 393939393939393939393939393939393939 ... 9393939393939393939
             match = re.search(qp_pattern, line)
             if not match:
                 continue
             qp_str = match.group("qp_str")
+            import code
+
+            code.interact(local=locals())  # python gdb/debugging
+
             qp_list += [int(qp_str[i : i + 2]) for i in range(0, len(qp_str), 2)]
 
     # dump the last state

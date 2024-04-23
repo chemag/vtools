@@ -234,16 +234,17 @@ def process_file(
 
     if add_qp:
         qp_df = vtools_ffprobe.get_frames_qp_information(infile, debug=debug)
-        # join 2x dataframes
-        df = (
-            qp_df
-            if df is None
-            else df.join(
-                qp_df.set_index("frame_num"), on="frame_num", rsuffix="_remove"
+        if qp_df is not None:
+            # join 2x dataframes
+            df = (
+                qp_df
+                if df is None
+                else df.join(
+                    qp_df.set_index("frame_num"), on="frame_num", rsuffix="_remove"
+                )
             )
-        )
-        duplicated_columns = list(k for k in df.keys() if k.endswith("_remove"))
-        df.drop(columns=duplicated_columns, inplace=True)
+            duplicated_columns = list(k for k in df.keys() if k.endswith("_remove"))
+            df.drop(columns=duplicated_columns, inplace=True)
 
     if add_mb_type:
         mb_df = vtools_ffprobe.get_frames_mb_information(infile, debug=debug)
