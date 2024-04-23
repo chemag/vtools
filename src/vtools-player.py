@@ -7,7 +7,6 @@ Can also show waveform if audio is present.
 
 import argparse
 import asyncio
-import common
 import csv
 import cv2
 import math
@@ -20,6 +19,8 @@ import tempfile
 import threading
 import timeit
 
+
+vtools_common = importlib.import_module("vtools-common")
 
 default_values = {
     "debug": 0,
@@ -112,9 +113,9 @@ class AudioWaveform:
             print(f"Create audio file {audiofile}")
         audiofile = tempfile.NamedTemporaryFile(prefix="vtools-player.").name + ".wav"
         command = f"ffmpeg -i {filename} -ac 1 {audiofile}"
-        returncode, out, err = common.run(command, debug=debug)
+        returncode, out, err = vtools_common.run(command, debug=debug)
         if returncode != 0:
-            raise common.InvalidCommand(f'error running "{command}"')
+            raise vtools_common.InvalidCommand(f'error running "{command}"')
         # check file
         self.soundfile = soundfile.SoundFile(f"{audiofile}")
         self.samplerate = self.soundfile.samplerate
@@ -449,9 +450,9 @@ async def analyze_files(files, raw, options):
             videoList[count] = Video(cap, options.rot_90, filename)
             # get the number of audio streams
             command = f"ffprobe -v error -select_streams a -show_entries stream=index -of csv=p=0 {filename}"
-            returncode, out, err = common.run(command, debug=options.debug)
+            returncode, out, err = vtools_common.run(command, debug=options.debug)
             if returncode != 0:
-                raise common.InvalidCommand(f'error running "{command}"')
+                raise vtools_common.InvalidCommand(f'error running "{command}"')
             num_audio_streams = 0 if not out else int(out)
             # add audio streams to list (if existing)
             if num_audio_streams > 0:
