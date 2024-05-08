@@ -71,17 +71,15 @@ def run_opencv_analysis(infile, add_mse, debug):
         if add_mse:
             # get mse
             diff_msey, diff_mseu, diff_msev = calculate_diff_mse(img, prev_img)
-            log10_msey = (
-                None
-                if diff_msey is None
-                else (math.log10(diff_msey) if diff_msey != 0.0 else "-inf")
-            )
+            if diff_msey is None:
+                log10_msey = None
+                psnr_y = None
+            else:
+                log10_msey = math.log10(diff_msey) if diff_msey != 0.0 else -np.inf
 
-            psnr_y = (
-                None
-                if ((log10_msey is None) or (log10_msey == "-inf"))
-                else 20 * PSNR_K - 10 * log10_msey
-            )
+                psnr_y = (
+                    np.inf if (log10_msey == -np.inf) else 20 * PSNR_K - 10 * log10_msey
+                )
             vals += [log10_msey, psnr_y, diff_msey, diff_mseu, diff_msev]
         df.loc[len(df.index)] = vals
         # update previous info
