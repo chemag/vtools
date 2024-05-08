@@ -28,7 +28,7 @@ def calculate_diff_mse(img, prev_img):
     return list(diff_mse)
 
 
-def run_opencv_analysis(infile, add_mse, debug):
+def run_opencv_analysis(infile, add_mse, mse_delta, debug):
     # open the input
     # use "0" to capture from the camera
     video_capture = cv2.VideoCapture(infile)
@@ -47,7 +47,15 @@ def run_opencv_analysis(infile, add_mse, debug):
     # get the tuple keys
     opencv_keys = ["frame_num", "timestamp_ms", "delta_timestamp_ms"]
     if add_mse:
-        opencv_keys += ["log10_msey", "psnr_y", "diff_msey", "diff_mseu", "diff_msev"]
+        opencv_keys += [
+            "log10_msey",
+            "psnr_y",
+            "diff_msey",
+            "diff_msey_delta_timestamp_ms",
+            "diff_mseu",
+            "diff_msev",
+        ]
+        prev_mse_timestamp_ms = np.nan
     df = pd.DataFrame(columns=opencv_keys)
 
     # process the input
@@ -80,7 +88,19 @@ def run_opencv_analysis(infile, add_mse, debug):
                 psnr_y = (
                     np.inf if (log10_msey == -np.inf) else 20 * PSNR_K - 10 * log10_msey
                 )
-            vals += [log10_msey, psnr_y, diff_msey, diff_mseu, diff_msev]
+            diff_msey_delta_timestamp_ms = np.nan
+            if diff_msey < mse_delta:
+                if prev_mse_timestamp_ms != np.nan:
+                    diff_msey_delta_timestamp_ms = timestamp_ms - prev_mse_timestamp_ms
+                prev_mse_timestamp_ms = timestamp_ms
+            vals += [
+                log10_msey,
+                psnr_y,
+                diff_msey,
+                diff_msey_delta_timestamp_ms,
+                diff_mseu,
+                diff_msev,
+            ]
         df.loc[len(df.index)] = vals
         # update previous info
         prev_timestamp_ms = timestamp_ms

@@ -34,6 +34,7 @@ default_values = {
     "dry_run": False,
     "add_opencv_analysis": True,
     "add_mse": False,
+    "mse_delta": 10.0,
     "add_ffprobe_frames": True,
     "add_qp": False,
     "add_mb_type": False,
@@ -168,6 +169,7 @@ def run_frame_analysis(options):
             infile,
             options.add_opencv_analysis,
             options.add_mse,
+            options.mse_delta,
             options.add_ffprobe_frames,
             options.add_qp,
             options.add_mb_type,
@@ -195,6 +197,7 @@ def process_file(
     infile,
     add_opencv_analysis,
     add_mse,
+    mse_delta,
     add_ffprobe_frames,
     add_qp,
     add_mb_type,
@@ -205,7 +208,7 @@ def process_file(
 
     # run opencv analysis
     if add_opencv_analysis:
-        opencv_df = vtools_opencv.run_opencv_analysis(infile, add_mse, debug)
+        opencv_df = vtools_opencv.run_opencv_analysis(infile, add_mse, mse_delta, debug)
         # join 2x dataframes
         df = (
             opencv_df
@@ -335,6 +338,14 @@ def get_options(argv):
         action="store_false",
         help="Add inter-frame MSE values to frame analysis%s"
         % (" [default]" if not default_values["add_mse"] else ""),
+    )
+    parser.add_argument(
+        "--mse-delta",
+        action="store",
+        type=float,
+        dest="mse_delta",
+        default=default_values["mse_delta"],
+        help="MSE delta to identify duplicate frames",
     )
     parser.add_argument(
         "--add-ffprobe-frames",
