@@ -19,7 +19,7 @@ PSNR_K = math.log10(2**8 - 1)
 
 def calculate_diff_mse(img, prev_img):
     if prev_img is None:
-        return (None, None, None)
+        return (np.nan, np.nan, np.nan)
     # YCbCr diff**2 / (width*height)
     yuvimg = cv2.cvtColor(img, cv2.COLOR_BGR2YCrCb)
     yuvprev_img = cv2.cvtColor(prev_img, cv2.COLOR_BGR2YCrCb)
@@ -71,9 +71,9 @@ def run_opencv_analysis(infile, add_mse, debug):
         if add_mse:
             # get mse
             diff_msey, diff_mseu, diff_msev = calculate_diff_mse(img, prev_img)
-            if diff_msey is None:
-                log10_msey = None
-                psnr_y = None
+            if diff_msey is np.nan:
+                log10_msey = np.nan
+                psnr_y = np.nan
             else:
                 log10_msey = math.log10(diff_msey) if diff_msey != 0.0 else -np.inf
 
