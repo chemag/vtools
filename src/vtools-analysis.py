@@ -261,6 +261,8 @@ def process_file(
         duplicated_columns = list(k for k in df.keys() if k.endswith("_remove"))
         df.drop(columns=duplicated_columns, inplace=True)
 
+    # fix the column types
+    df = df.astype({"frame_num": int})
     return df
 
 
