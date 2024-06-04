@@ -39,6 +39,7 @@ default_values = {
     "add_qp": False,
     "add_mb_type": False,
     "qpextract_bin": None,
+    "frame_dups_psnr": 35.0,
     "filter": "frames",
     "infile_list": [],
     "outfile": None,
@@ -92,7 +93,7 @@ SUMMARY_FIELDS_AVERAGE = (
 )
 
 
-def summarize(infile, df):
+def summarize(infile, df, frame_dups_psnr, debug):
     keys, vals = ["infile", "num_frames", "file_size_bytes"], [
         infile,
         len(df),
@@ -146,10 +147,81 @@ def summarize(infile, df):
         val = df[key].max()
         keys.append(key)
         vals.append(val)
+    # get frame dup/drop info
+    frame_dups_ratio, frame_dups_average_length = get_frame_dups_info(
+        df, frame_dups_psnr, debug
+    )
+    keys.append("frame_dups_ratio")
+    vals.append(frame_dups_ratio)
+    keys.append("frame_dups_average_length")
+    vals.append(frame_dups_average_length)
+    frame_drop_ratio, frame_drop_average_length = get_frame_drop_info(df, debug)
+    keys.append("frame_drop_ratio")
+    vals.append(frame_drop_ratio)
+    keys.append("frame_drop_average_length")
+    vals.append(frame_drop_average_length)
     # return summary dataframe
     df = pd.DataFrame(columns=keys)
     df.loc[len(df.index)] = vals
     return df
+
+
+# count frame dups (average, variance)
+# frame_dups_ratio: ratio of duplicated frames over the total
+# frame_dups_average_length: average length of a dup (in frame units)
+def get_frame_dups_info(df, frame_dups_psnr, debug):
+    frame_total = len(df)
+    frame_dups_list = list(df[df["psnr_y"] > frame_dups_psnr]["frame_num"])
+    frame_dups = len(frame_dups_list)
+    frame_dups_ratio = frame_dups / frame_total
+    # get frame dup clumpiness factor
+    last_frame_num = None
+    dup_length = 0
+    dup_length_list = []
+    # TODO(chema): what if frame_dups_list = [..., 81, 83, 85, 87, ...]
+    for frame_num in frame_dups_list:
+        if last_frame_num == None:
+            pass
+        elif last_frame_num == frame_num - 1:
+            dup_length += 1
+        else:
+            if dup_length > 0:
+                dup_length_list.append(dup_length + 1)
+                if debug > 0:
+                    print(f"{frame_num=} {dup_length=}")
+            dup_length = 0
+        last_frame_num = frame_num
+    if frame_dups == 0:
+        frame_dups_average_length = 0.0
+    else:
+        frame_dups_average_length = sum(dup_length_list) / len(dup_length_list)
+    return frame_dups_ratio, frame_dups_average_length
+
+
+# count frame drops (average, variance)
+# frame_drop_ratio: ratio of dropped frames over the total
+# frame_drop_average_length: average length of a drop (in frame units)
+def get_frame_drop_info(df, debug):
+    frame_total = len(df)
+    delta_timestamp_ms_mean = df["delta_timestamp_ms"].mean()
+    delta_timestamp_ms_threshold = delta_timestamp_ms_mean * 0.75 * 2
+    drop_length_list = list(
+        df[df["delta_timestamp_ms"] > delta_timestamp_ms_threshold][
+            "delta_timestamp_ms"
+        ]
+    )
+    # normalize list
+    normalized_drop_length_list = list(
+        round(drop_length / delta_timestamp_ms_mean) for drop_length in drop_length_list
+    )
+    frame_drop_ratio = sum(normalized_drop_length_list) / frame_total
+    if sum(normalized_drop_length_list) == 0:
+        frame_drop_average_length = 0.0
+    else:
+        frame_drop_average_length = sum(normalized_drop_length_list) / len(
+            normalized_drop_length_list
+        )
+    return frame_drop_ratio, frame_drop_average_length
 
 
 def run_frame_analysis(options):
@@ -178,7 +250,7 @@ def run_frame_analysis(options):
         )
         # implement summary mode
         if options.filter == "summary":
-            df = summarize(infile, df)
+            df = summarize(infile, df, options.frame_dups_psnr, options.debug)
         df_list.append(df)
 
     if options.filter == "summary":
@@ -405,6 +477,14 @@ def get_options(argv):
         dest="qpextract_bin",
         default=default_values["qpextract_bin"],
         help="Path to the qpextract bin",
+    )
+    parser.add_argument(
+        "--frame-dups-psnr",
+        action="store",
+        type=float,
+        dest="frame_dups_psnr",
+        default=default_values["frame_dups_psnr"],
+        help="PSNR Y threshold for duplicate frame",
     )
     parser.add_argument(
         "--filter",
