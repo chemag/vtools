@@ -204,6 +204,7 @@ PREFERRED_KEY_ORDER = [
     "duration_time",
     "pkt_duration",
     "pkt_duration_time",
+    "pkt_duration_time_ms",
     "best_effort_timestamp",
     "best_effort_timestamp_time",
     "framerate",
@@ -276,6 +277,7 @@ def parse_ffprobe_output(out, debug):
             else:
                 pkt_duration_time = float(frame["pts_time"]) - prev_frame_pts_time
             prev_frame_pts_time = float(frame["pts_time"])
+        frame["pkt_duration_time_ms"] = pkt_duration_time * 1000.0
         # add bitrate (bps)
         frame["bitrate"] = (
             ((int(frame["pkt_size"]) * 8) / pkt_duration_time)
