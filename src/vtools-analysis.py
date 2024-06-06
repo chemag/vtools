@@ -281,6 +281,11 @@ def process_file(
     debug,
 ):
     df = None
+    if debug > 1:
+        print(f"{add_opencv_analysis=}")
+        print(f"{add_ffprobe_frames=}")
+        print(f"{add_qp=}")
+        print(f"{add_mb_type=}")
 
     # run opencv analysis
     if add_opencv_analysis:
