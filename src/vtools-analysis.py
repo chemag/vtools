@@ -191,7 +191,7 @@ def get_frame_dups_info(df, frame_dups_psnr, debug):
                     print(f"{frame_num=} {dup_length=}")
             dup_length = 0
         last_frame_num = frame_num
-    if frame_dups == 0:
+    if frame_dups == 0 or len(dup_length_list) == 0:
         frame_dups_average_length = 0.0
     else:
         frame_dups_average_length = sum(dup_length_list) / len(dup_length_list)
