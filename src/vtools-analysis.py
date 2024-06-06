@@ -39,6 +39,7 @@ default_values = {
     "add_qp": False,
     "add_mb_type": False,
     "qpextract_bin": None,
+    "frame_dups": True,
     "frame_dups_psnr": 35.0,
     "filter": "frames",
     "infile_list": [],
@@ -93,7 +94,7 @@ SUMMARY_FIELDS_AVERAGE = (
 )
 
 
-def summarize(infile, df, frame_dups_psnr, debug):
+def summarize(infile, df, frame_dups, frame_dups_psnr, debug):
     keys, vals = ["infile", "num_frames", "file_size_bytes"], [
         infile,
         len(df),
@@ -148,13 +149,14 @@ def summarize(infile, df, frame_dups_psnr, debug):
         keys.append(key)
         vals.append(val)
     # get frame dup/drop info
-    frame_dups_ratio, frame_dups_average_length = get_frame_dups_info(
-        df, frame_dups_psnr, debug
-    )
-    keys.append("frame_dups_ratio")
-    vals.append(frame_dups_ratio)
-    keys.append("frame_dups_average_length")
-    vals.append(frame_dups_average_length)
+    if frame_dups:
+        frame_dups_ratio, frame_dups_average_length = get_frame_dups_info(
+            df, frame_dups_psnr, debug
+        )
+        keys.append("frame_dups_ratio")
+        vals.append(frame_dups_ratio)
+        keys.append("frame_dups_average_length")
+        vals.append(frame_dups_average_length)
     frame_drop_ratio, frame_drop_average_length = get_frame_drop_info(df, debug)
     keys.append("frame_drop_ratio")
     vals.append(frame_drop_ratio)
@@ -250,7 +252,9 @@ def run_frame_analysis(options):
         )
         # implement summary mode
         if options.filter == "summary":
-            df = summarize(infile, df, options.frame_dups_psnr, options.debug)
+            df = summarize(
+                infile, df, options.frame_dups, options.frame_dups_psnr, options.debug
+            )
         df_list.append(df)
 
     if options.filter == "summary":
@@ -477,6 +481,21 @@ def get_options(argv):
         dest="qpextract_bin",
         default=default_values["qpextract_bin"],
         help="Path to the qpextract bin",
+    )
+    parser.add_argument(
+        "--frame-dups",
+        dest="frame_dups",
+        action="store_true",
+        default=default_values["frame_dups"],
+        help="Add frame dups to frame analysis%s"
+        % (" [default]" if default_values["frame_dups"] else ""),
+    )
+    parser.add_argument(
+        "--noframe-dups",
+        dest="frame_dups",
+        action="store_false",
+        help="Do not add frame dups to frame analysis%s"
+        % (" [default]" if not default_values["frame_dups"] else ""),
     )
     parser.add_argument(
         "--frame-dups-psnr",
