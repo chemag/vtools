@@ -395,7 +395,7 @@ def get_options(argv):
         "--noadd-opencv-analysis",
         dest="add_opencv_analysis",
         action="store_false",
-        help="Add opencv frame values to frame analysis%s"
+        help="Do not add opencv frame values to frame analysis%s"
         % (" [default]" if not default_values["add_opencv_analysis"] else ""),
     )
     parser.add_argument(
