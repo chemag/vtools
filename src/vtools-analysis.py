@@ -205,13 +205,15 @@ def get_frame_dups_info(df, frame_dups_psnr, debug):
 # frame_drop_average_length: average length of a drop (in frame units)
 def get_frame_drop_info(df, debug):
     frame_total = len(df)
-    delta_timestamp_ms_mean = df["delta_timestamp_ms"].mean()
+    col_name = None
+    if "delta_timestamp_ms" in df.columns:
+        col_name = "delta_timestamp_ms"
+    elif "pkt_duration_time_ms" in df.columns:
+        col_name = "pkt_duration_time_ms"
+    assert col_name is not None, "error: need a column with frame timestamps"
+    delta_timestamp_ms_mean = df[col_name].mean()
     delta_timestamp_ms_threshold = delta_timestamp_ms_mean * 0.75 * 2
-    drop_length_list = list(
-        df[df["delta_timestamp_ms"] > delta_timestamp_ms_threshold][
-            "delta_timestamp_ms"
-        ]
-    )
+    drop_length_list = list(df[df[col_name] > delta_timestamp_ms_threshold][col_name])
     # normalize list
     normalized_drop_length_list = list(
         round(drop_length / delta_timestamp_ms_mean) for drop_length in drop_length_list
