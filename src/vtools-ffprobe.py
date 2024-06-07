@@ -281,12 +281,14 @@ def parse_ffprobe_output(out, debug):
         # add bitrate (bps)
         frame["bitrate"] = (
             ((int(frame["pkt_size"]) * 8) / pkt_duration_time)
-            if pkt_duration_time != np.NaN
+            if (pkt_duration_time != np.NaN and pkt_duration_time != 0.0)
             else np.NaN
         )
         # add framerate (fps)
         frame["framerate"] = (
-            (1.0 / pkt_duration_time) if pkt_duration_time != np.NaN else np.NaN
+            (1.0 / pkt_duration_time)
+            if (pkt_duration_time != np.NaN and pkt_duration_time != 0.0)
+            else np.NaN
         )
         # store the frame
         video_frames[stream_index].append(frame)
