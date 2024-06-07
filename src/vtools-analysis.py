@@ -157,11 +157,15 @@ def summarize(infile, df, frame_dups, frame_dups_psnr, debug):
         vals.append(frame_dups_ratio)
         keys.append("frame_dups_average_length")
         vals.append(frame_dups_average_length)
-    frame_drop_ratio, frame_drop_average_length = get_frame_drop_info(df, debug)
+    frame_drop_ratio, frame_drop_average_length, frame_drop_text_list = (
+        get_frame_drop_info(df, debug)
+    )
     keys.append("frame_drop_ratio")
     vals.append(frame_drop_ratio)
     keys.append("frame_drop_average_length")
     vals.append(frame_drop_average_length)
+    keys.append("frame_drop_text_list")
+    vals.append(frame_drop_text_list)
     # return summary dataframe
     df = pd.DataFrame(columns=keys)
     df.loc[len(df.index)] = vals
@@ -214,18 +218,19 @@ def get_frame_drop_info(df, debug):
     delta_timestamp_ms_mean = df[col_name].mean()
     delta_timestamp_ms_threshold = delta_timestamp_ms_mean * 0.75 * 2
     drop_length_list = list(df[df[col_name] > delta_timestamp_ms_threshold][col_name])
-    # normalize list
-    normalized_drop_length_list = list(
-        round(drop_length / delta_timestamp_ms_mean) for drop_length in drop_length_list
-    )
-    frame_drop_ratio = sum(normalized_drop_length_list) / frame_total
-    if sum(normalized_drop_length_list) == 0:
-        frame_drop_average_length = 0.0
-    else:
-        frame_drop_average_length = sum(normalized_drop_length_list) / len(
-            normalized_drop_length_list
+    # drop_length_list: [66.68900000000022, 100.25600000000168, ...]
+    frame_drop_ratio = sum(drop_length_list) / (frame_total * delta_timestamp_ms_mean)
+    frame_drop_average_length = 0.0
+    normalized_frame_drop_average_length = 0.0
+    if drop_length_list:
+        frame_drop_average_length = sum(drop_length_list) / len(drop_length_list)
+        normalized_frame_drop_average_length = (
+            frame_drop_average_length / delta_timestamp_ms_mean
         )
-    return frame_drop_ratio, frame_drop_average_length
+    frame_drop_text_list = " ".join(
+        str(drop_length) for drop_length in drop_length_list
+    )
+    return frame_drop_ratio, normalized_frame_drop_average_length, frame_drop_text_list
 
 
 def run_frame_analysis(options):
