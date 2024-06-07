@@ -60,7 +60,7 @@ def run_opencv_analysis(infile, add_mse, mse_delta, debug):
 
     # process the input
     opencv_vals = []
-    prev_timestamp_ms = video_capture.get(cv2.CAP_PROP_POS_MSEC)
+    prev_timestamp_ms = np.nan
     prev_img = None
     frame_num = 0
     while True:
@@ -74,7 +74,10 @@ def run_opencv_analysis(infile, add_mse, mse_delta, debug):
         ]
         # get timestamps
         timestamp_ms = video_capture.get(cv2.CAP_PROP_POS_MSEC)
-        delta_timestamp_ms = timestamp_ms - prev_timestamp_ms
+        if prev_timestamp_ms == np.nan:
+            delta_timestamp_ms = np.nan
+        else:
+            delta_timestamp_ms = timestamp_ms - prev_timestamp_ms
         vals += [timestamp_ms, delta_timestamp_ms]
         if add_mse:
             # get mse
