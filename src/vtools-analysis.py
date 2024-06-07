@@ -150,13 +150,15 @@ def summarize(infile, df, frame_dups, frame_dups_psnr, debug):
         vals.append(val)
     # get frame dup/drop info
     if frame_dups:
-        frame_dups_ratio, frame_dups_average_length = get_frame_dups_info(
-            df, frame_dups_psnr, debug
+        frame_dups_ratio, frame_dups_average_length, frame_dups_text_list = (
+            get_frame_dups_info(df, frame_dups_psnr, debug)
         )
         keys.append("frame_dups_ratio")
         vals.append(frame_dups_ratio)
         keys.append("frame_dups_average_length")
         vals.append(frame_dups_average_length)
+        keys.append("frame_dups_text_list")
+        vals.append(frame_dups_text_list)
     frame_drop_ratio, frame_drop_average_length, frame_drop_text_list = (
         get_frame_drop_info(df, debug)
     )
@@ -201,7 +203,8 @@ def get_frame_dups_info(df, frame_dups_psnr, debug):
         frame_dups_average_length = 0.0
     else:
         frame_dups_average_length = sum(dup_length_list) / len(dup_length_list)
-    return frame_dups_ratio, frame_dups_average_length
+    frame_dups_text_list = " ".join(str(frame_dup) for frame_dup in frame_dups_list)
+    return frame_dups_ratio, frame_dups_average_length, frame_dups_text_list
 
 
 # count frame drops (average, variance)
