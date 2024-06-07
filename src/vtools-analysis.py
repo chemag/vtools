@@ -403,7 +403,7 @@ def get_options(argv):
         % (" [default]" if default_values["add_opencv_analysis"] else ""),
     )
     parser.add_argument(
-        "--noadd-opencv-analysis",
+        "--no-add-opencv-analysis",
         dest="add_opencv_analysis",
         action="store_false",
         help="Do not add opencv frame values to frame analysis%s"
@@ -418,7 +418,7 @@ def get_options(argv):
         % (" [default]" if default_values["add_mse"] else ""),
     )
     parser.add_argument(
-        "--noadd-mse",
+        "--no-add-mse",
         dest="add_mse",
         action="store_false",
         help="Add inter-frame MSE values to frame analysis%s"
@@ -441,7 +441,7 @@ def get_options(argv):
         % (" [default]" if default_values["add_ffprobe_frames"] else ""),
     )
     parser.add_argument(
-        "--noadd-ffprobe-frames",
+        "--no-add-ffprobe-frames",
         dest="add_ffprobe_frames",
         action="store_false",
         help="Add ffprobe frame values to frame analysis%s"
@@ -457,7 +457,7 @@ def get_options(argv):
         % (" [default]" if default_values["add_qp"] else ""),
     )
     parser.add_argument(
-        "--noadd-qp",
+        "--no-add-qp",
         action="store_const",
         dest="add_qp",
         const=False,
@@ -474,7 +474,7 @@ def get_options(argv):
         % (" [default]" if default_values["add_mb_type"] else ""),
     )
     parser.add_argument(
-        "--noadd-mb-type",
+        "--no-add-mb-type",
         action="store_const",
         dest="add_mb_type",
         const=False,
@@ -498,7 +498,7 @@ def get_options(argv):
         % (" [default]" if default_values["frame_dups"] else ""),
     )
     parser.add_argument(
-        "--noframe-dups",
+        "--no-frame-dups",
         dest="frame_dups",
         action="store_false",
         help="Do not add frame dups to frame analysis%s"
