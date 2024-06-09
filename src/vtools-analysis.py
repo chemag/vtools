@@ -94,7 +94,7 @@ SUMMARY_FIELDS_AVERAGE = (
 )
 
 
-def summarize(infile, df, frame_dups, frame_dups_psnr, debug):
+def summarize(infile, df, config_dict, debug):
     keys, vals = ["infile", "num_frames", "file_size_bytes"], [
         infile,
         len(df),
@@ -148,10 +148,10 @@ def summarize(infile, df, frame_dups, frame_dups_psnr, debug):
         val = df[key].max()
         keys.append(key)
         vals.append(val)
-    # get frame dup/drop info
-    if frame_dups:
+    # get frame dups info
+    if config_dict["frame_dups"]:
         frame_dups_ratio, frame_dups_average_length, frame_dups_text_list = (
-            get_frame_dups_info(df, frame_dups_psnr, debug)
+            get_frame_dups_info(df, config_dict["frame_dups_psnr"], debug)
         )
         keys.append("frame_dups_ratio")
         vals.append(frame_dups_ratio)
@@ -159,6 +159,7 @@ def summarize(infile, df, frame_dups, frame_dups_psnr, debug):
         vals.append(frame_dups_average_length)
         keys.append("frame_dups_text_list")
         vals.append(frame_dups_text_list)
+    # get frame drop info
     frame_drop_ratio, frame_drop_average_length, frame_drop_text_list = (
         get_frame_drop_info(df, debug)
     )
@@ -236,38 +237,26 @@ def get_frame_drop_info(df, debug):
     return frame_drop_ratio, normalized_frame_drop_average_length, frame_drop_text_list
 
 
-def run_frame_analysis(options):
-    # read input values
-    config_dict = {
-        k: v for (k, v) in vars(options).items() if k in vtools_common.CONFIG_KEY_LIST
-    }
+def run_frame_analysis(infile_list, outfile, the_filter, config_dict, debug):
     # multiple infiles only supported in summary mode
     assert (
-        len(options.infile_list) == 1 or options.filter == "summary"
+        len(infile_list) == 1 or the_filter == "summary"
     ), "error: multiple infiles only supported in summary mode"
 
     # process input files
     df_list = []
-    for infile in options.infile_list:
+    for infile in infile_list:
         df = process_file(
             infile,
-            options.add_opencv_analysis,
-            options.add_mse,
-            options.mse_delta,
-            options.add_ffprobe_frames,
-            options.add_qp,
-            options.add_mb_type,
             config_dict,
-            options.debug,
+            debug,
         )
         # implement summary mode
-        if options.filter == "summary":
-            df = summarize(
-                infile, df, options.frame_dups, options.frame_dups_psnr, options.debug
-            )
+        if the_filter == "summary":
+            df = summarize(infile, df, config_dict, debug)
         df_list.append(df)
 
-    if options.filter == "summary":
+    if the_filter == "summary":
         # coalesce summary entries
         df = None
         for tmp_df in df_list:
@@ -275,31 +264,28 @@ def run_frame_analysis(options):
     else:
         df = df_list[0]
     # write up to output file
-    df.to_csv(options.outfile, index=False)
+    df.to_csv(outfile, index=False)
 
 
 # process input
 def process_file(
     infile,
-    add_opencv_analysis,
-    add_mse,
-    mse_delta,
-    add_ffprobe_frames,
-    add_qp,
-    add_mb_type,
     config_dict,
     debug,
 ):
     df = None
     if debug > 1:
-        print(f"{add_opencv_analysis=}")
-        print(f"{add_ffprobe_frames=}")
-        print(f"{add_qp=}")
-        print(f"{add_mb_type=}")
+        print(f"{config_dict['add_opencv_analysis']=}")
+        print(f"{config_dict['add_mse']=}")
+        print(f"{config_dict['add_ffprobe_frames']=}")
+        print(f"{config_dict['add_qp']=}")
+        print(f"{config_dict['add_mb_type']=}")
 
     # run opencv analysis
-    if add_opencv_analysis:
-        opencv_df = vtools_opencv.run_opencv_analysis(infile, add_mse, mse_delta, debug)
+    if config_dict["add_opencv_analysis"]:
+        opencv_df = vtools_opencv.run_opencv_analysis(
+            infile, config_dict["add_mse"], config_dict["mse_delta"], debug
+        )
         # join 2x dataframes
         df = (
             opencv_df
@@ -312,7 +298,7 @@ def process_file(
         df.drop(columns=duplicated_columns, inplace=True)
 
     # add other sources of information
-    if add_ffprobe_frames:
+    if config_dict["add_ffprobe_frames"]:
         ffprobe_df = vtools_ffprobe.get_frames_information(infile, config_dict, debug)
         # join 2x dataframes
         df = (
@@ -325,7 +311,7 @@ def process_file(
         duplicated_columns = list(k for k in df.keys() if k.endswith("_remove"))
         df.drop(columns=duplicated_columns, inplace=True)
 
-    if add_qp:
+    if config_dict["add_qp"]:
         qp_df = vtools_ffprobe.get_frames_qp_information(infile, config_dict, debug)
         if qp_df is not None:
             # join 2x dataframes
@@ -339,7 +325,7 @@ def process_file(
             duplicated_columns = list(k for k in df.keys() if k.endswith("_remove"))
             df.drop(columns=duplicated_columns, inplace=True)
 
-    if add_mb_type:
+    if config_dict["add_mb_type"]:
         mb_df = vtools_ffprobe.get_frames_mb_information(infile, config_dict, debug)
         # join 2x dataframes
         df = (
@@ -563,6 +549,15 @@ def get_options(argv):
     return options
 
 
+def get_config_dict(options):
+    # read input values
+    config_dict = {
+        k: v for (k, v) in vars(options).items() if k in vtools_common.CONFIG_KEY_LIST
+    }
+    # TODO(chema): check config coherence
+    return config_dict
+
+
 def main(argv):
     # parse options
     options = get_options(argv)
@@ -573,8 +568,15 @@ def main(argv):
     if options.debug > 0:
         print(options)
 
+    config_dict = get_config_dict(options)
     if options.filter in ("frames", "summary"):
-        run_frame_analysis(options)
+        run_frame_analysis(
+            options.infile_list,
+            options.outfile,
+            options.filter,
+            config_dict,
+            options.debug,
+        )
 
 
 if __name__ == "__main__":

@@ -8,7 +8,17 @@ Module that contains common code.
 import subprocess
 import sys
 
-CONFIG_KEY_LIST = ("qpextract_bin",)
+CONFIG_KEY_LIST = (
+    "add_opencv_analysis",
+    "add_mse",
+    "mse_delta",
+    "add_ffprobe_frames",
+    "add_qp",
+    "add_mb_type",
+    "frame_dups",
+    "frame_dups_psnr",
+    "qpextract_bin",
+)
 
 
 class InvalidCommand(Exception):
