@@ -14,6 +14,32 @@ import tempfile
 
 vtools_common = importlib.import_module("vtools-common")
 
+def get_audio_info(infile, **kwargs):
+    ffprobe_bin = kwargs.get("ffprobe", "ffprobe")
+    debug = kwargs.get("debug", 0)
+    
+    # Construct the ffprobe command to extract audio stream information
+    command = f"{ffprobe_bin} -i '{infile}' -show_streams -select_streams a -print_format json"
+    
+    # Execute the command
+    # print(command)  # Optional: print the command to debug
+    returncode, out, err = vtools_common.run(command, debug=debug)
+    
+    # Check if the command was successful
+    assert returncode == 0, f'Error running "{command}"'
+    
+    # Parse the output to extract audio properties
+    import json
+    data = json.loads(out)
+    if len(data['streams']) == 0:
+        raise ValueError("No audio stream found in the file.")
+    
+    audio_stream = data['streams'][0]
+    sample_rate = int(audio_stream.get('sample_rate', '0'))
+    bitrate = int(audio_stream.get('bit_rate', '0'))
+    duration = float(audio_stream.get('duration', '0.0'))
+    # Hz, bps, seconds
+    return sample_rate, bitrate, duration
 
 def run_ffprobe_command(infile, analysis="frames", **kwargs):
     stream_id = kwargs.get("stream_id", None)
@@ -229,6 +255,10 @@ PREFERRED_KEY_ORDER = [
     # other
     "repeat_pict",
     "side_data_list",
+    # audio information
+    "audio_sample_rate",
+    "audio_bitrate",
+    "audio_duration",
 ]
 
 

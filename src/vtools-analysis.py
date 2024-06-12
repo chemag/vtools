@@ -44,6 +44,7 @@ default_values = {
     "filter": "frames",
     "infile_list": [],
     "outfile": None,
+    "dump_audio_info": False,
 }
 
 
@@ -113,7 +114,7 @@ def summarize(infile, df, config_dict, debug):
         vals.append(val)
     # add derived values
     if "pkt_duration_time" in df:
-        key = "file_duration_time"
+        key = "video_duration"
         val = df["pkt_duration_time"].astype(float).sum()
         keys.append(key)
         vals.append(val)
@@ -169,6 +170,16 @@ def summarize(infile, df, config_dict, debug):
     vals.append(frame_drop_average_length)
     keys.append("frame_drop_text_list")
     vals.append(frame_drop_text_list)
+    if config_dict['dump_audio_info'] == True:
+        sample_rate, bitrate, duration = (
+            vtools_ffprobe.get_audio_info(infile)
+        )
+        keys.append("audio_sample_rate")
+        vals.append(sample_rate)
+        keys.append("audio_bitrate")
+        vals.append(bitrate)
+        keys.append("audio_duration")
+        vals.append(duration)
     # return summary dataframe
     df = pd.DataFrame(columns=keys)
     df.loc[len(df.index)] = vals
@@ -539,6 +550,15 @@ def get_options(argv):
         metavar="output-file",
         help="output file",
     )
+    parser.add_argument(
+        "--dump-audio-info",
+        dest="dump_audio_info",
+        action="store_true",
+        default=default_values["dump_audio_info"],
+        help="Dump audio information%s"
+        % (" [default]" if default_values["dump_audio_info"] else ""),
+    )
+
     # do the parsing
     options = parser.parse_args(argv[1:])
     if options.version:
