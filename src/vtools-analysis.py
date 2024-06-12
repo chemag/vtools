@@ -275,11 +275,8 @@ def process_file(
 ):
     df = None
     if debug > 1:
-        print(f"{config_dict['add_opencv_analysis']=}")
-        print(f"{config_dict['add_mse']=}")
-        print(f"{config_dict['add_ffprobe_frames']=}")
-        print(f"{config_dict['add_qp']=}")
-        print(f"{config_dict['add_mb_type']=}")
+        for key in vtools_common.CONFIG_KEY_LIST:
+            print(f'config_dict["{key}"]: {config_dict[key]}')
 
     # run opencv analysis
     if config_dict["add_opencv_analysis"]:
