@@ -18,6 +18,7 @@ CONFIG_KEY_LIST = (
     "frame_dups",
     "frame_dups_psnr",
     "qpextract_bin",
+    "dump_audio_info",
 )
 
 
