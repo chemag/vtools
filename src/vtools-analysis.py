@@ -214,10 +214,11 @@ def get_frame_dups_info(df, frame_dups_psnr, debug):
 def get_frame_drop_info(df, debug):
     frame_total = len(df)
     col_name = None
-    if "delta_timestamp_ms" in df.columns:
-        col_name = "delta_timestamp_ms"
-    elif "pkt_duration_time_ms" in df.columns:
+    if "pkt_duration_time_ms" in df.columns:
+        # ffprobe does a better job at decoding timestamps from stts
         col_name = "pkt_duration_time_ms"
+    elif "delta_timestamp_ms" in df.columns:
+        col_name = "delta_timestamp_ms"
     assert col_name is not None, "error: need a column with frame timestamps"
     delta_timestamp_ms_median = df[col_name].median()
     delta_timestamp_ms_threshold = delta_timestamp_ms_median * 0.75 * 2
