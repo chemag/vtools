@@ -219,17 +219,17 @@ def get_frame_drop_info(df, debug):
     elif "pkt_duration_time_ms" in df.columns:
         col_name = "pkt_duration_time_ms"
     assert col_name is not None, "error: need a column with frame timestamps"
-    delta_timestamp_ms_mean = df[col_name].mean()
-    delta_timestamp_ms_threshold = delta_timestamp_ms_mean * 0.75 * 2
+    delta_timestamp_ms_median = df[col_name].median()
+    delta_timestamp_ms_threshold = delta_timestamp_ms_median * 0.75 * 2
     drop_length_list = list(df[df[col_name] > delta_timestamp_ms_threshold][col_name])
     # drop_length_list: [66.68900000000022, 100.25600000000168, ...]
-    frame_drop_ratio = sum(drop_length_list) / (frame_total * delta_timestamp_ms_mean)
+    frame_drop_ratio = sum(drop_length_list) / (frame_total * delta_timestamp_ms_median)
     frame_drop_average_length = 0.0
     normalized_frame_drop_average_length = 0.0
     if drop_length_list:
         frame_drop_average_length = sum(drop_length_list) / len(drop_length_list)
         normalized_frame_drop_average_length = (
-            frame_drop_average_length / delta_timestamp_ms_mean
+            frame_drop_average_length / delta_timestamp_ms_median
         )
     frame_drop_text_list = " ".join(
         str(drop_length) for drop_length in drop_length_list
