@@ -258,7 +258,7 @@ PREFERRED_KEY_ORDER = [
     # audio information
     "audio_sample_rate",
     "audio_bitrate",
-    "audio_duration",
+    "audio_duration_time",
 ]
 
 

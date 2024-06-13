@@ -114,7 +114,7 @@ def summarize(infile, df, config_dict, debug):
         vals.append(val)
     # add derived values
     if "pkt_duration_time" in df:
-        key = "video_duration"
+        key = "video_duration_time"
         val = df["pkt_duration_time"].astype(float).sum()
         keys.append(key)
         vals.append(val)
@@ -178,7 +178,7 @@ def summarize(infile, df, config_dict, debug):
         vals.append(sample_rate)
         keys.append("audio_bitrate")
         vals.append(bitrate)
-        keys.append("audio_duration")
+        keys.append("audio_duration_time")
         vals.append(duration)
     # return summary dataframe
     df = pd.DataFrame(columns=keys)
@@ -557,6 +557,13 @@ def get_options(argv):
         default=default_values["dump_audio_info"],
         help="Dump audio information%s"
         % (" [default]" if default_values["dump_audio_info"] else ""),
+    )
+    parser.add_argument(
+        "--no-dump-audio-info",
+        dest="dump_audio_info",
+        action="store_false",
+        help="Do not dump audio information%s"
+        % (" [default]" if not default_values["dump_audio_info"] else ""),
     )
 
     # do the parsing
