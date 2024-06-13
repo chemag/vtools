@@ -224,7 +224,11 @@ def get_frame_drop_info(df, debug):
     delta_timestamp_ms_threshold = delta_timestamp_ms_median * 0.75 * 2
     drop_length_list = list(df[df[col_name] > delta_timestamp_ms_threshold][col_name])
     # drop_length_list: [66.68900000000022, 100.25600000000168, ...]
-    frame_drop_ratio = sum(drop_length_list) / (frame_total * delta_timestamp_ms_median)
+    frame_drop_duration = sum(drop_length_list) - delta_timestamp_ms_median * len(
+        drop_length_list
+    )
+    total_duration = sum(df[col_name][1:])
+    frame_drop_ratio = frame_drop_duration / total_duration
     frame_drop_average_length = 0.0
     normalized_frame_drop_average_length = 0.0
     if drop_length_list:
