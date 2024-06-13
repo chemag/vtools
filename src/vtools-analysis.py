@@ -112,9 +112,10 @@ def summarize(infile, df, config_dict, debug):
         keys.append(key)
         vals.append(val)
     # add derived values
-    if "pkt_duration_time" in df:
+    if "pkt_duration_time_ms" in df:
         key = "file_duration_time"
-        val = df["pkt_duration_time"].astype(float).sum()
+        # duration is in seconds
+        val = df["pkt_duration_time_ms"].astype(float).sum() / 1000
         keys.append(key)
         vals.append(val)
     if "pict_type" in df:

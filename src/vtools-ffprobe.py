@@ -266,10 +266,11 @@ def parse_ffprobe_output(out, debug):
         frame["bpp"] = (int(frame["pkt_size"]) * 8) / (
             int(frame["width"]) * int(frame["height"])
         )
-        # get the duration of this frame
-        # some file produce duration_time instead of pkt_duration_time
+        # pkt_duration_time is deprecated, use duration_time
         if "pkt_duration_time" in frame:
             pkt_duration_time = float(frame["pkt_duration_time"])
+        elif "duration_time" in frame:
+            pkt_duration_time = float(frame["duration_time"])
         else:
             # TODO(chema): this is measuring the time after this frame
             if prev_frame_pts_time is None:
