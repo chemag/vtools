@@ -44,6 +44,7 @@ default_values = {
     "filter": "frames",
     "infile_list": [],
     "outfile": None,
+    "dump_audio_info": False,
 }
 
 
@@ -113,7 +114,7 @@ def summarize(infile, df, config_dict, debug):
         vals.append(val)
     # add derived values
     if "pkt_duration_time_ms" in df:
-        key = "file_duration_time"
+        key = "video_duration_time"
         # duration is in seconds
         val = df["pkt_duration_time_ms"].astype(float).sum() / 1000
         keys.append(key)
@@ -170,6 +171,16 @@ def summarize(infile, df, config_dict, debug):
     vals.append(frame_drop_average_length)
     keys.append("frame_drop_text_list")
     vals.append(frame_drop_text_list)
+    if config_dict['dump_audio_info'] == True:
+        sample_rate, bitrate, duration = (
+            vtools_ffprobe.get_audio_info(infile)
+        )
+        keys.append("audio_sample_rate")
+        vals.append(sample_rate)
+        keys.append("audio_bitrate")
+        vals.append(bitrate)
+        keys.append("audio_duration_time")
+        vals.append(duration)
     # return summary dataframe
     df = pd.DataFrame(columns=keys)
     df.loc[len(df.index)] = vals
@@ -215,22 +226,27 @@ def get_frame_dups_info(df, frame_dups_psnr, debug):
 def get_frame_drop_info(df, debug):
     frame_total = len(df)
     col_name = None
-    if "delta_timestamp_ms" in df.columns:
-        col_name = "delta_timestamp_ms"
-    elif "pkt_duration_time_ms" in df.columns:
+    if "pkt_duration_time_ms" in df.columns:
+        # ffprobe does a better job at decoding timestamps from stts
         col_name = "pkt_duration_time_ms"
+    elif "delta_timestamp_ms" in df.columns:
+        col_name = "delta_timestamp_ms"
     assert col_name is not None, "error: need a column with frame timestamps"
-    delta_timestamp_ms_mean = df[col_name].mean()
-    delta_timestamp_ms_threshold = delta_timestamp_ms_mean * 0.75 * 2
+    delta_timestamp_ms_median = df[col_name].median()
+    delta_timestamp_ms_threshold = delta_timestamp_ms_median * 0.75 * 2
     drop_length_list = list(df[df[col_name] > delta_timestamp_ms_threshold][col_name])
     # drop_length_list: [66.68900000000022, 100.25600000000168, ...]
-    frame_drop_ratio = sum(drop_length_list) / (frame_total * delta_timestamp_ms_mean)
+    frame_drop_duration = sum(drop_length_list) - delta_timestamp_ms_median * len(
+        drop_length_list
+    )
+    total_duration = sum(df[col_name][1:])
+    frame_drop_ratio = frame_drop_duration / total_duration
     frame_drop_average_length = 0.0
     normalized_frame_drop_average_length = 0.0
     if drop_length_list:
         frame_drop_average_length = sum(drop_length_list) / len(drop_length_list)
         normalized_frame_drop_average_length = (
-            frame_drop_average_length / delta_timestamp_ms_mean
+            frame_drop_average_length / delta_timestamp_ms_median
         )
     frame_drop_text_list = " ".join(
         str(drop_length) for drop_length in drop_length_list
@@ -276,11 +292,8 @@ def process_file(
 ):
     df = None
     if debug > 1:
-        print(f"{config_dict['add_opencv_analysis']=}")
-        print(f"{config_dict['add_mse']=}")
-        print(f"{config_dict['add_ffprobe_frames']=}")
-        print(f"{config_dict['add_qp']=}")
-        print(f"{config_dict['add_mb_type']=}")
+        for key in vtools_common.CONFIG_KEY_LIST:
+            print(f'config_dict["{key}"]: {config_dict[key]}')
 
     # run opencv analysis
     if config_dict["add_opencv_analysis"]:
@@ -540,6 +553,22 @@ def get_options(argv):
         metavar="output-file",
         help="output file",
     )
+    parser.add_argument(
+        "--dump-audio-info",
+        dest="dump_audio_info",
+        action="store_true",
+        default=default_values["dump_audio_info"],
+        help="Dump audio information%s"
+        % (" [default]" if default_values["dump_audio_info"] else ""),
+    )
+    parser.add_argument(
+        "--no-dump-audio-info",
+        dest="dump_audio_info",
+        action="store_false",
+        help="Do not dump audio information%s"
+        % (" [default]" if not default_values["dump_audio_info"] else ""),
+    )
+
     # do the parsing
     options = parser.parse_args(argv[1:])
     if options.version:
