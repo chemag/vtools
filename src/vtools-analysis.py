@@ -171,7 +171,7 @@ def summarize(infile, df, config_dict, debug):
     vals.append(frame_drop_average_length)
     keys.append("frame_drop_text_list")
     vals.append(frame_drop_text_list)
-    if config_dict['dump_audio_info'] == True:
+    if config_dict.get('dump_audio_info', False) == True:
         sample_rate, bitrate, duration = (
             vtools_ffprobe.get_audio_info(infile)
         )
