@@ -222,6 +222,8 @@ def get_frame_dups_info(df, frame_dups_psnr, debug):
 # frame_drop_ratio: ratio of dropped frames over the total
 # frame_drop_average_length: average length of a drop (in frame units)
 def get_frame_drop_info(df, debug):
+    # 0. get the list of inter-frame timestamp distances.
+    # We are using as pandas Series as it has added functions.
     frame_total = len(df)
     col_name = None
     if "pkt_duration_time_ms" in df.columns:
@@ -230,16 +232,33 @@ def get_frame_drop_info(df, debug):
     elif "delta_timestamp_ms" in df.columns:
         col_name = "delta_timestamp_ms"
     assert col_name is not None, "error: need a column with frame timestamps"
-    delta_timestamp_ms_median = df[col_name].median()
-    delta_timestamp_ms_threshold = delta_timestamp_ms_median * 0.75 * 2
-    drop_length_list = list(df[df[col_name] > delta_timestamp_ms_threshold][col_name])
+    delta_timestamp_ms_series = df[col_name]
+    # 1. calculate the median inter-frame distance
+    delta_timestamp_ms_median = delta_timestamp_ms_series.median()
+    # 2. calculate the threshold to consider frame drop: This should be 2
+    # times the median, minus a factor
+    FACTOR = 0.75
+    delta_timestamp_ms_threshold = delta_timestamp_ms_median * FACTOR * 2
+    # 3. get the list of all the drops (absolute inter-frame values)
+    drop_length_list = list(
+        delta_timestamp_ms_series[
+            delta_timestamp_ms_series > delta_timestamp_ms_threshold
+        ]
+    )
     # drop_length_list: [66.68900000000022, 100.25600000000168, ...]
+    # 4. sum all the drops, but adding only the length over 1x frame time
     frame_drop_duration = sum(drop_length_list) - delta_timestamp_ms_median * len(
         drop_length_list
     )
-    total_duration = sum(df[col_name][1:])
+    # frame_drop_duration: sum([33.35900000000022, 66.92600000000168, ...])
+    # 5. get the total duration as the sum of all the inter-frame distances
+    total_duration = sum(delta_timestamp_ms_series[1:])
+    # 6. calculate frame drop ratio as extra drop length over total duration
     frame_drop_ratio = frame_drop_duration / total_duration
-    frame_drop_average_length = 0.0
+    # 7. calculate average drop length, normalized to framerate. Note that
+    # a single frame drop is a normalized frame drop length of 2. When
+    # frame drops are uncorrelated, the normalized average drop length
+    # should be close to 2
     normalized_frame_drop_average_length = 0.0
     if drop_length_list:
         frame_drop_average_length = sum(drop_length_list) / len(drop_length_list)
