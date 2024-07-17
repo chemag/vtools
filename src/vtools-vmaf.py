@@ -22,9 +22,9 @@ FUNC_CHOICES = {
     "copy_file": "copy input to output",
 }
 
-VMAF_MODEL = "/usr/share/model/vmaf_v0.6.1neg.json"
 VMAF_MODEL = "/usr/share/model/vmaf_4k_v0.6.1.json"
 VMAF_MODEL = "/usr/share/model/vmaf_v0.6.1.json"
+VMAF_MODEL = "/usr/share/model/vmaf_v0.6.1neg.json"
 
 default_values = {
     "debug": 0,
