@@ -30,8 +30,6 @@ def get_audio_info(infile, **kwargs):
     assert returncode == 0, f'Error running "{command}"'
 
     # Parse the output to extract audio properties
-    import json
-
     data = json.loads(out)
     if len(data["streams"]) == 0:
         raise ValueError("No audio stream found in the file.")
