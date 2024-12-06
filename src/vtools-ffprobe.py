@@ -3,6 +3,7 @@
 """ffprobe.py: A wrapper around ffprobe."""
 
 
+import argparse
 import importlib
 import io
 import json
@@ -13,6 +14,20 @@ import sys
 import tempfile
 
 vtools_common = importlib.import_module("vtools-common")
+
+FILTER_CHOICES = {
+    "help": "show help options",
+    "frames": "per-frame analysis",
+    "summary": "per-video analysis",
+}
+
+default_values = {
+    "debug": 0,
+    "dry_run": False,
+    "filter": "frames",
+    "infile": None,
+    "outfile": None,
+}
 
 
 def get_audio_info(infile, **kwargs):
@@ -601,3 +616,117 @@ def mb_dict_convert(mb_only_keys, mb_dict):
     for key in mb_only_keys:
         mb_list.append(mb_info[key])
     return mb_list
+
+
+def run_frame_analysis(infile, outfile, debug):
+    df = get_frames_information(infile, None, debug)
+    df.to_csv(outfile, index=False)
+
+
+def get_options(argv):
+    """Generic option parser.
+
+    Args:
+        argv: list containing arguments
+
+    Returns:
+        Namespace - An argparse.ArgumentParser-generated option object
+    """
+    # init parser
+    # usage = 'usage: %prog [options] arg1 arg2'
+    # parser = argparse.OptionParser(usage=usage)
+    # parser.print_help() to get argparse.usage (large help)
+    # parser.print_usage() to get argparse.usage (just usage line)
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument(
+        "-v",
+        "--version",
+        action="store_true",
+        dest="version",
+        default=False,
+        help="Print version",
+    )
+    parser.add_argument(
+        "-d",
+        "--debug",
+        action="count",
+        dest="debug",
+        default=default_values["debug"],
+        help="Increase verbosity (use multiple times for more)",
+    )
+    parser.add_argument(
+        "--quiet",
+        action="store_const",
+        dest="debug",
+        const=-1,
+        help="Zero verbosity",
+    )
+    parser.add_argument(
+        "--dry-run",
+        action="store_true",
+        dest="dry_run",
+        default=default_values["dry_run"],
+        help="Dry run",
+    )
+    parser.add_argument(
+        "--filter",
+        action="store",
+        type=str,
+        dest="filter",
+        default=default_values["filter"],
+        choices=FILTER_CHOICES.keys(),
+        metavar="{%s}" % (" | ".join(f"{k}" for k in FILTER_CHOICES.keys())),
+        help="%s"
+        % (
+            " | ".join(
+                f"{k}: {v}{' [default]' if k == default_values['filter'] else ''}"
+                for k, v in FILTER_CHOICES.items()
+            )
+        ),
+    )
+    parser.add_argument(
+        "-i",
+        "--infile",
+        dest="infile",
+        type=str,
+        default=default_values["infile"],
+        metavar="input-file",
+        help="input file",
+    )
+    parser.add_argument(
+        "-o",
+        "--outfile",
+        dest="outfile",
+        type=str,
+        default=default_values["outfile"],
+        metavar="output-file",
+        help="output file",
+    )
+    # do the parsing
+    options = parser.parse_args(argv[1:])
+    if options.version:
+        return options
+    return options
+
+
+def main(argv):
+    # parse options
+    options = get_options(argv)
+    # get outfile
+    if options.outfile == "-" or options.outfile is None:
+        options.outfile = "/dev/fd/1"
+    # print results
+    if options.debug > 0:
+        print(options)
+
+    if options.filter == "frames":
+        run_frame_analysis(
+            options.infile,
+            options.outfile,
+            options.debug,
+        )
+
+
+if __name__ == "__main__":
+    # at least the CLI program name: (CLI) execution
+    main(sys.argv)
