@@ -268,6 +268,11 @@ PREFERRED_KEY_ORDER = [
     "crop_bottom",
     "crop_top",
     "sample_aspect_ratio",
+    # colorimetry
+    "color_range",
+    "color_transfer",
+    "color_primaries",
+    "color_space",
     # other
     "repeat_pict",
     "side_data_list",
