@@ -19,6 +19,8 @@ import sys
 vtools_common = importlib.import_module("vtools-common")
 vtools_ffprobe = importlib.import_module("vtools-ffprobe")
 vtools_opencv = importlib.import_module("vtools-opencv")
+vtools_version = importlib.import_module("vtools-version")
+
 
 DEFAULT_NOISE_LEVEL = 50
 PSNR_K = math.log10(2**8 - 1)
@@ -392,10 +394,8 @@ def get_options(argv):
     parser.add_argument(
         "-v",
         "--version",
-        action="store_true",
-        dest="version",
-        default=False,
-        help="Print version",
+        action="version",
+        version=vtools_version.__version__,
     )
     parser.add_argument(
         "-d",
@@ -588,8 +588,6 @@ def get_options(argv):
 
     # do the parsing
     options = parser.parse_args(argv[1:])
-    if options.version:
-        return options
     # force analysis coherence
     if options.add_mse:
         options.add_opencv_analysis = True
