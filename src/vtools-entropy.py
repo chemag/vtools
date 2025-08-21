@@ -4,18 +4,22 @@
 
 
 import argparse
-import ffmpeg
+import importlib
 import math
 import numpy as np
+import pandas as pd
+import re
 import sys
+
+vtools_ffmpeg = importlib.import_module("vtools-ffmpeg")
 
 
 __version__ = "0.1"
 
 default_values = {
     "debug": 0,
-    "frameto": -1,
-    "framefrom": -1,
+    "frameto": None,
+    "framefrom": None,
     "dump_file": None,
     "dump_list": [],
     "infile": None,
@@ -23,111 +27,103 @@ default_values = {
 }
 
 
-def process_diff(frame2, frame1, frame_counter1, width, height, dfid, options):
-    if options.framefrom != -1 and options.framefrom > frame_counter1:
-        return
-    if options.frameto != -1 and options.frameto < frame_counter1:
-        sys.exit(0)
+# helper functions
+def interframe_diff_energy(
+    infile, framefrom=None, frameto=None, dump_list=None, debug=0
+):
+    columns = (
+        "frame_num",
+        "frame_num_prev",
+        "pts_time_sec",
+        "pts_time_delta_sec",
+        "width",
+        "height",
+        "cwidth",
+        "cheight",
+        "pix_fmt",
+        "y_mse",
+        "y_log10_mse",
+        "u_mse",
+        "u_log10_mse",
+        "v_mse",
+        "v_log10_mse",
+    )
+    df = pd.DataFrame(columns=columns)
+    yarr_prev = uarr_prev = varr_prev = None
+    meta_prev = None
+    with vtools_ffmpeg.FFmpegYUVFrameReader(infile) as reader:
+        while True:
+            # get a frame
+            out = reader.get_next_frame()
+            if out is None:
+                break
+            yarr, uarr, varr, meta = out
+            produce_row = True
+            # check the frame
+            frame_num = meta["frame_num"]
+            if yarr_prev is None:
+                produce_row = False
+            if framefrom is not None and frame_num < framefrom:
+                produce_row = False
+            if frameto is not None and frame_num > frameto:
+                break
+            # process the frame
+            if produce_row:
+                frame_num_prev = meta_prev["frame_num"]
+                pts_time_sec = meta["pts_time_sec"]
+                pts_time_sec_prev = meta_prev["pts_time_sec"]
+                pts_time_delta_sec = pts_time_sec - pts_time_sec_prev
+                width = meta["width"]
+                height = meta["height"]
+                pix_fmt = meta["pix_fmt"]
+                # TODO(chema): add label based on dump_list
+                y_mse, y_log10_mse = calculate_mse(yarr, yarr_prev, width, height)
+                cwidth, cheight = uarr.shape
+                u_mse, u_log10_mse = calculate_mse(uarr, uarr_prev, cwidth, cheight)
+                v_mse, v_log10_mse = calculate_mse(varr, varr_prev, cwidth, cheight)
+                df.loc[df.size] = [
+                    frame_num,
+                    frame_num_prev,
+                    pts_time_sec,
+                    pts_time_delta_sec,
+                    width,
+                    height,
+                    cwidth,
+                    cheight,
+                    pix_fmt,
+                    y_mse,
+                    y_log10_mse,
+                    u_mse,
+                    u_log10_mse,
+                    v_mse,
+                    v_log10_mse,
+                ]
+            # update prev information
+            meta_prev = meta
+            yarr_prev = yarr
+            uarr_prev = uarr
+            varr_prev = varr
+    return df
+
+
+def calculate_mse(arr, arr_prev, width, height, label=None):
     # use np.subtract() instead of "-" to allow setting the dtype
-    diff = np.subtract(frame2, frame1, dtype=np.int32)
-    if frame_counter1 in options.dump_list:
-        raw_outfile = (
-            options.infile
-            + f".diff_{frame_counter1}_"
-            + f"{frame_counter1 + 1}.{width}x{height}.y8"
-        )
+    diff = np.subtract(arr, arr_prev, dtype=np.int32)
+    mse = (diff**2).mean()
+    mse /= width * height
+    log10_mse = math.log10(mse) if mse != 0.0 else np.nan
+    if label is not None:
+        raw_outfile = f"{label}.gray"  # gray10???
         diff.astype(np.uint8).tofile(raw_outfile)
         # convert the file to png
-        outfile = (
-            options.infile + f".diff_{frame_counter1}_" + f"{frame_counter1 + 1}.png"
-        )
+        outfile = f"{label}.png"
         stream = ffmpeg.input(
             raw_outfile, format="rawvideo", pix_fmt="y8", s=f"{width}x{height}"
         )
         stream = ffmpeg.output(stream, outfile)
         stream = ffmpeg.overwrite_output(stream)
         out, err = ffmpeg.run(stream, capture_stdout=True, capture_stderr=True)
-    if dfid is not None:
-        diff.astype(np.uint8).tofile(dfid)
-    mse = (diff**2).mean()
-    mse /= width * height
-    return (
-        frame_counter1,
-        frame_counter1 + 1,
-        mse,
-        math.log10(mse) if mse != 0.0 else "-inf",
-    )
-
-
-def diff_consecutive_frames(options):
-    # 1. parse the file
-    # https://github.com/kkroening/ffmpeg-python/blob/master/examples/README.md
-    probe = ffmpeg.probe(options.infile)
-    video_stream = next(
-        (stream for stream in probe["streams"] if stream["codec_type"] == "video"), None
-    )
-    width = int(video_stream["width"])
-    height = int(video_stream["height"])
-
-    timestamp = 0
-    chunk_size_sec = 10
-    frame_counter = 0
-    last_frame = None
-
-    # diff video fid
-    raw_outfile = f"{options.dump_file}.{width}x{height}.y8.yuv"
-    dfid = open(raw_outfile, "w") if options.dump_file else None
-
-    results = []
-    while True:
-        # 2. convert the video into images (luma-only)
-        stream = ffmpeg.input(
-            options.infile, ss=timestamp, to=timestamp + chunk_size_sec
-        )
-        stream = ffmpeg.output(stream, "pipe:", format="rawvideo", pix_fmt="gray")
-        out, err = ffmpeg.run(stream, capture_stdout=True, capture_stderr=True)
-        frames = np.frombuffer(out, np.uint8).reshape([-1, height, width, 1])
-        if len(frames) == 0:
-            if timestamp == 0:
-                # not a single frame
-                print(f"error: did not find any frame in {options.infile}")
-                sys.exit(-1)
-            break
-        if last_frame is not None:
-            frame_counter, frame_counter_next, mse, log_mse = process_diff(
-                frames[0], last_frame, frame_counter, width, height, dfid, options
-            )
-            results.append([frame_counter, frame_counter_next, mse, log_mse])
-        for i in range(len(frames) - 1):
-            frame_counter, frame_counter_next, mse, log_mse = process_diff(
-                frames[i + 1],
-                frames[i],
-                frame_counter + i,
-                width,
-                height,
-                dfid,
-                options,
-            )
-            results.append([frame_counter, frame_counter_next, mse, log_mse])
-        # keep last frame
-        last_frame = frames[-1]
-        timestamp += chunk_size_sec
-        frame_counter += len(frames)
-
-    # print header
-    with open(options.outfile, "w") as fout:
-        fout.write("frame1,frame2,mse,log10_mse\n")
-        for frame_counter, frame_counter_next, mse, log_mse in results:
-            fout.write(f"{frame_counter},{frame_counter_next},{mse},{log_mse}\n")
-
-    if options.dump_file:
-        # convert the file to mp4
-        stream = ffmpeg.input(
-            raw_outfile, format="rawvideo", pix_fmt="y8", s=f"{width}x{height}"
-        )
-        stream = ffmpeg.output(stream, options.dump_file)
-        stream = ffmpeg.overwrite_output(stream)
-        out, err = ffmpeg.run(stream, capture_stdout=True, capture_stderr=True)
+    return mse, log10_mse
 
 
 def get_options(argv):
@@ -229,8 +225,6 @@ def get_options(argv):
 
 
 def main(argv):
-    print("error: use src/vtools-analysis.py --add-mse -i in.mp4 -o res.csv")
-    sys.exit(-1)
     # parse options
     options = get_options(argv)
     if options.version:
@@ -245,7 +239,14 @@ def main(argv):
     if options.debug > 0:
         print(options)
     # do something
-    diff_consecutive_frames(options)
+    df = interframe_diff_energy(
+        options.infile,
+        options.framefrom,
+        options.frameto,
+        options.dump_list,
+        options.debug,
+    )
+    df.to_csv(options.outfile, index=False)
 
 
 if __name__ == "__main__":
