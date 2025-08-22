@@ -150,12 +150,12 @@ class FFmpegYUVFrameReader:
         self.pix_fmt = self.stream["pix_fmt"]
         self._frame_size = frame_byte_size(self.width, self.height, self.pix_fmt)
 
-        #stream = ffmpeg.input(
+        # stream = ffmpeg.input(
         #    infile, ss=timestamp, to=timestamp + chunk_size_sec
-        #)
-        #stream = ffmpeg.output(stream, "pipe:", format="rawvideo", pix_fmt="gray")
-        #out, err = ffmpeg.run(stream, capture_stdout=True, capture_stderr=True)
-        #frames = np.frombuffer(out, np.uint8).reshape([-1, height, width, 1])
+        # )
+        # stream = ffmpeg.output(stream, "pipe:", format="rawvideo", pix_fmt="gray")
+        # out, err = ffmpeg.run(stream, capture_stdout=True, capture_stderr=True)
+        # frames = np.frombuffer(out, np.uint8).reshape([-1, height, width, 1])
         self.proc = (
             ffmpeg.input(self.infile, hwaccel="auto").output(
                 "pipe:",

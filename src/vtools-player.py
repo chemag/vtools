@@ -495,7 +495,6 @@ async def analyze_files(files, raw, options):
         videolock = asyncio.Lock()
         start = timeit.default_timer()
 
-
         if capture:
             counter = 0
             for video in videoList:
@@ -524,7 +523,6 @@ async def analyze_files(files, raw, options):
         elif k == ord("n"):
             amp -= 1
         step = 0
-
 
         if first_pause:
             pause = True
