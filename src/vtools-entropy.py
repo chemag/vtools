@@ -22,16 +22,39 @@ default_values = {
     "framefrom": None,
     "dump_file": None,
     "dump_list": [],
-    "infile": None,
+    "infile_list": [],
     "outfile": None,
 }
 
 
 # helper functions
-def interframe_diff_energy(
+def interframe_diff_energy(infile_list, framefrom, frameto, dump_list, debug):
+    # multiple infiles only supported in summary mode
+    assert len(infile_list) >= 1, "error: need at least one input file to analyze"
+    # process input files
+    df_list = []
+    for infile in infile_list:
+        df = interframe_diff_energy_file(
+            infile,
+            framefrom,
+            frameto,
+            dump_list,
+            debug,
+        )
+        df_list.append(df)
+
+    # coalesce entries
+    df = None
+    for tmp_df in df_list:
+        df = tmp_df if df is None else pd.concat([df, tmp_df])
+    return df
+
+
+def interframe_diff_energy_file(
     infile, framefrom=None, frameto=None, dump_list=None, debug=0
 ):
     columns = (
+        "filename",
         "frame_num",
         "frame_num_prev",
         "pts_time_sec",
@@ -82,6 +105,7 @@ def interframe_diff_energy(
                 u_mse, u_log10_mse = calculate_mse(uarr, uarr_prev, cwidth, cheight)
                 v_mse, v_log10_mse = calculate_mse(varr, varr_prev, cwidth, cheight)
                 df.loc[df.size] = [
+                    infile,
                     frame_num,
                     frame_num_prev,
                     pts_time_sec,
@@ -200,11 +224,10 @@ def get_options(argv):
         help="dump list",
     )
     parser.add_argument(
-        "-i",
-        "--infile",
-        dest="infile",
+        dest="infile_list",
         type=str,
-        default=default_values["infile"],
+        nargs="+",
+        default=default_values["infile_list"],
         metavar="input-file",
         help="input file",
     )
@@ -230,9 +253,7 @@ def main(argv):
     if options.version:
         print("version: %s" % __version__)
         sys.exit(0)
-    # get infile
-    if options.infile == "-" or options.infile is None:
-        options.infile = "/dev/fd/0"
+    # get outfile
     if options.outfile == "-" or options.outfile is None:
         options.outfile = "/dev/fd/1"
     # print results
@@ -240,7 +261,7 @@ def main(argv):
         print(options)
     # do something
     df = interframe_diff_energy(
-        options.infile,
+        options.infile_list,
         options.framefrom,
         options.frameto,
         options.dump_list,
