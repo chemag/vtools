@@ -84,6 +84,8 @@ def interframe_diff_energy_file(
             produce_row = True
             # check the frame
             frame_num = meta["frame_num"]
+            if debug > 0:
+                print(f"debug: infile: {infile} frame_num: {frame_num}")
             if yarr_prev is None:
                 produce_row = False
             if framefrom is not None and frame_num < framefrom:
