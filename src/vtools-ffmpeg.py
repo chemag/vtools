@@ -203,15 +203,18 @@ class FFmpegYUVFrameReader:
         if self.proc is None:
             raise RuntimeError("Call process() before get_next_frame().")
 
-        buf = self.stdout.read(self._frame_size)
-        if not buf or len(buf) < self._frame_size:
-            return None
-
+        # 1. read the metadata
         try:
             pts_time_sec = self._read_next_pts_time_sec()
         except EOFError:
             pts_time_sec = None
 
+        # 2. read the actual frame
+        buf = self.stdout.read(self._frame_size)
+        if not buf or len(buf) < self._frame_size:
+            return None
+
+        # 3. process the frame
         yarr, uarr, varr = split_planes(buf, self.width, self.height, self.pix_fmt)
         meta = {
             "frame_num": self._frame_num,
