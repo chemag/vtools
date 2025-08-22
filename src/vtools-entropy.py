@@ -11,7 +11,7 @@ import pandas as pd
 import re
 import sys
 
-vtools_ffmpeg = importlib.import_module("vtools-ffmpeg")
+vtools_pyav = importlib.import_module("vtools-pyav")
 
 
 __version__ = "0.1"
@@ -74,7 +74,7 @@ def interframe_diff_energy_file(
     df = pd.DataFrame(columns=columns)
     yarr_prev = uarr_prev = varr_prev = None
     meta_prev = None
-    with vtools_ffmpeg.FFmpegYUVFrameReader(infile) as reader:
+    with vtools_pyav.PyAVYUVFrameReader(infile) as reader:
         while True:
             # get a frame
             out = reader.get_next_frame()
