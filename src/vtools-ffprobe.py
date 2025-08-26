@@ -325,7 +325,7 @@ def parse_ffprobe_output(out, debug):
         else:
             # TODO(chema): this is measuring the time after this frame
             if prev_frame_pts_time is None:
-                pkt_duration_time = np.NaN
+                pkt_duration_time = np.nan
             else:
                 pkt_duration_time = float(frame["pts_time"]) - prev_frame_pts_time
             prev_frame_pts_time = float(frame["pts_time"])
@@ -333,14 +333,14 @@ def parse_ffprobe_output(out, debug):
         # add bitrate (bps)
         frame["bitrate"] = (
             ((int(frame["pkt_size"]) * 8) / pkt_duration_time)
-            if (pkt_duration_time != np.NaN and pkt_duration_time != 0.0)
-            else np.NaN
+            if (pkt_duration_time != np.nan and pkt_duration_time != 0.0)
+            else np.nan
         )
         # add framerate (fps)
         frame["framerate"] = (
             (1.0 / pkt_duration_time)
-            if (pkt_duration_time != np.NaN and pkt_duration_time != 0.0)
-            else np.NaN
+            if (pkt_duration_time != np.nan and pkt_duration_time != 0.0)
+            else np.nan
         )
         # store the frame
         video_frames[stream_index].append(frame)
