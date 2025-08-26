@@ -1,0 +1,3 @@
+[submodule "lib/liblcvm"]
+	path = lib/liblcvm
+	url = https://github.com/chemag/liblcvm.git
