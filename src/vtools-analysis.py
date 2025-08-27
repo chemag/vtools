@@ -1,13 +1,7 @@
 #!/usr/bin/env python3
-
 """vtools-analysis.py module description.
-
 Analyzes a series of video files.
 """
-# https://docs.opencv.org/3.4/dd/d43/tutorial_py_video_display.html
-# https://docs.opencv.org/3.1.0/d7/d9e/tutorial_video_write.html
-
-
 import argparse
 import importlib
 import math
@@ -16,11 +10,14 @@ import os
 import pandas as pd
 import sys
 
+# Import liblcvm (pybind11 bindings)
+sys.path.append(os.path.join(os.path.dirname(__file__), "..", "build", "lib", "liblcvm"))
+import liblcvm
+
 vtools_common = importlib.import_module("vtools-common")
 vtools_ffprobe = importlib.import_module("vtools-ffprobe")
 vtools_opencv = importlib.import_module("vtools-opencv")
 vtools_version = importlib.import_module("vtools-version")
-
 
 DEFAULT_NOISE_LEVEL = 50
 PSNR_K = math.log10(2**8 - 1)
@@ -30,7 +27,6 @@ FILTER_CHOICES = {
     "frames": "per-frame analysis",
     "summary": "per-video analysis",
 }
-
 default_values = {
     "debug": 0,
     "dry_run": False,
@@ -48,8 +44,6 @@ default_values = {
     "outfile": None,
     "dump_audio_info": False,
 }
-
-
 SUMMARY_FIELDS_SINGLE = (
     "pix_fmt",
     "chroma_location",
@@ -66,8 +60,6 @@ SUMMARY_FIELDS_SINGLE = (
     "color_primaries",
     "color_space",
 )
-
-
 SUMMARY_FIELDS_AVERAGE = (
     "delta_timestamp_ms",
     "duration_time",
@@ -97,111 +89,172 @@ SUMMARY_FIELDS_AVERAGE = (
 )
 
 
+def get_liblcvm_summary_info(infile):
+    config = liblcvm.LiblcvmConfig()
+    info = liblcvm.parse(infile, config)
+    frame = info.get_frame()
+    timing = info.get_timing()
+    audio = info.get_audio()
+    # All FrameInformation fields
+    frame_fields = {
+        "filesize": frame.get_filesize(),
+        "bitrate_bps": frame.get_bitrate_bps(),
+        "width": frame.get_width(),
+        "height": frame.get_height(),
+        "type": frame.get_type(),
+        "horizresolution": frame.get_horizresolution(),
+        "vertresolution": frame.get_vertresolution(),
+        "depth": frame.get_depth(),
+        "chroma_format": frame.get_chroma_format(),
+        "bit_depth_luma": frame.get_bit_depth_luma(),
+        "bit_depth_chroma": frame.get_bit_depth_chroma(),
+        "video_full_range_flag": frame.get_video_full_range_flag(),
+        "colour_primaries": frame.get_colour_primaries(),
+        "transfer_characteristics": frame.get_transfer_characteristics(),
+        "matrix_coeffs": frame.get_matrix_coeffs(),
+    }
+    # All TimingInformation fields
+    timing_fields = {
+        "video_freeze": timing.get_video_freeze(),
+        "audio_video_ratio": timing.get_audio_video_ratio(),
+        "duration_video_sec": timing.get_duration_video_sec(),
+        "duration_audio_sec": timing.get_duration_audio_sec(),
+        "timescale_video_hz": timing.get_timescale_video_hz(),
+        "timescale_audio_hz": timing.get_timescale_audio_hz(),
+        "pts_duration_sec_average": timing.get_pts_duration_sec_average(),
+        "pts_duration_sec_median": timing.get_pts_duration_sec_median(),
+        "pts_duration_sec_stddev": timing.get_pts_duration_sec_stddev(),
+        "pts_duration_sec_mad": timing.get_pts_duration_sec_mad(),
+        "num_video_frames": timing.get_num_video_frames(),
+        "frame_rate_fps_median": timing.get_frame_rate_fps_median(),
+        "frame_rate_fps_average": timing.get_frame_rate_fps_average(),
+        "frame_rate_fps_reverse_average": timing.get_frame_rate_fps_reverse_average(),
+        "frame_rate_fps_stddev": timing.get_frame_rate_fps_stddev(),
+        "frame_drop_count": timing.get_frame_drop_count(),
+        "frame_drop_ratio": timing.get_frame_drop_ratio(),
+        "normalized_frame_drop_average_length": timing.get_normalized_frame_drop_average_length(),
+        "num_video_keyframes": timing.get_num_video_keyframes(),
+        "key_frame_ratio": timing.get_key_frame_ratio(),
+        # Lists (optional, can be large)
+        "frame_num_orig_list": timing.get_frame_num_orig_list(),
+        "stts_unit_list": timing.get_stts_unit_list(),
+        "ctts_unit_list": timing.get_ctts_unit_list(),
+        "dts_sec_list": timing.get_dts_sec_list(),
+        "pts_sec_list": timing.get_pts_sec_list(),
+        "pts_duration_sec_list": timing.get_pts_duration_sec_list(),
+        "pts_duration_delta_sec_list": timing.get_pts_duration_delta_sec_list(),
+    }
+    # All AudioInformation fields
+    audio_fields = {
+        "audio_type": audio.get_audio_type(),
+        "channel_count": audio.get_channel_count(),
+        "sample_rate": audio.get_sample_rate(),
+        "sample_size": audio.get_sample_size(),
+    }
+    # Top-level fields
+    top_fields = {
+        "infile": infile,
+        "filename": info.get_filename(),
+    }
+    # Merge all fields
+    all_fields = {}
+    all_fields.update(top_fields)
+    all_fields.update(frame_fields)
+    all_fields.update(timing_fields)
+    all_fields.update(audio_fields)
+    return all_fields
+
+
 def summarize(infile, df, config_dict, debug):
-    keys, vals = ["infile", "num_frames", "file_size_bytes"], [
-        infile,
-        len(df),
-        os.stat(infile).st_size,
-    ]
-    # add single-value fields
+    # 1. Get summary info from liblcvm
+    try:
+        lcvm_info = get_liblcvm_summary_info(infile)
+    except Exception as e:
+        if debug > 0:
+            print(f"liblcvm error: {e}")
+        lcvm_info = {}
+
+    # 2. Start with liblcvm fields
+    keys = list(lcvm_info.keys())
+    vals = list(lcvm_info.values())
+
+    # 3. Add number of frames from pandas (if available)
+    keys.append("num_frames")
+    vals.append(len(df))
+
+    # 4. Add single-value fields from pandas if not in liblcvm
     for key in SUMMARY_FIELDS_SINGLE:
-        if key not in df:
-            # field not in analysis
+        if key not in df or key in lcvm_info:
             continue
-        assert (
-            len(df[key].unique()) == 1
-        ), f"error: more than 1 value for {key}: {list(df[key].unique())}"
-        val = df[key].unique()[0]
-        keys.append(key)
-        vals.append(val)
-    # add derived values
-    if "pkt_duration_time_ms" in df:
-        key = "video_duration_time"
-        # duration is in seconds
-        val = df["pkt_duration_time_ms"].astype(float).sum() / 1000
-        keys.append(key)
-        vals.append(val)
+        unique_vals = df[key].unique()
+        if len(unique_vals) == 1:
+            keys.append(key)
+            vals.append(unique_vals[0])
+        else:
+            if debug > 0:
+                print(f"Warning: more than 1 value for {key}: {list(unique_vals)}")
+
+    # 5. Add derived values from pandas if not in liblcvm
+    if "pkt_duration_time_ms" in df and "duration_video_sec" not in lcvm_info:
+        keys.append("video_duration_time")
+        vals.append(df["pkt_duration_time_ms"].astype(float).sum() / 1000)
+
     if "pict_type" in df:
         num_iframes = len(df[df["pict_type"] == "I"])
         num_pframes = len(df[df["pict_type"] == "P"])
         num_bframes = len(df[df["pict_type"] == "B"])
-        key = "p_i_ratio"
-        val = num_pframes / num_iframes
-        keys.append(key)
-        vals.append(val)
-        key = "b_i_ratio"
-        val = num_bframes / num_iframes
-        keys.append(key)
-        vals.append(val)
-    # add averaged fields
+        if num_iframes > 0:
+            keys.append("p_i_ratio")
+            vals.append(num_pframes / num_iframes)
+            keys.append("b_i_ratio")
+            vals.append(num_bframes / num_iframes)
+
+    # 6. Add averaged fields from pandas if not in liblcvm
     for key in SUMMARY_FIELDS_AVERAGE:
-        if key not in df:
-            # field not in analysis
+        if key not in df or key in lcvm_info:
             continue
-        val = df[key].astype(float).mean()
+        vals.append(df[key].astype(float).mean())
         keys.append(key)
-        vals.append(val)
-    # add max/min fields
-    key = "qp_min"
-    if key in df:
-        val = df[key].min()
-        keys.append(key)
-        vals.append(val)
-    key = "qp_max"
-    if key in df:
-        val = df[key].max()
-        keys.append(key)
-        vals.append(val)
-    # get frame dups info
-    if config_dict["frame_dups"]:
+
+    # 7. Add max/min fields
+    for key in ["qp_min", "qp_max"]:
+        if key in df:
+            val = df[key].min() if key == "qp_min" else df[key].max()
+            keys.append(key)
+            vals.append(val)
+
+    # 8. Frame dups info (still pandas-based)
+    if config_dict.get("frame_dups", False):
         frame_dups_ratio, frame_dups_average_length, frame_dups_text_list = (
             get_frame_dups_info(df, config_dict["frame_dups_psnr"], debug)
         )
-        keys.append("frame_dups_ratio")
-        vals.append(frame_dups_ratio)
-        keys.append("frame_dups_average_length")
-        vals.append(frame_dups_average_length)
-        keys.append("frame_dups_text_list")
-        vals.append(frame_dups_text_list)
-    # get frame drop info
-    frame_drop_ratio, frame_drop_average_length, frame_drop_text_list = (
-        get_frame_drop_info(df, debug)
-    )
-    keys.append("frame_drop_ratio")
-    vals.append(frame_drop_ratio)
-    keys.append("frame_drop_average_length")
-    vals.append(frame_drop_average_length)
-    keys.append("frame_drop_text_list")
-    vals.append(frame_drop_text_list)
+        keys.extend(["frame_dups_ratio", "frame_dups_average_length", "frame_dups_text_list"])
+        vals.extend([frame_dups_ratio, frame_dups_average_length, frame_dups_text_list])
+
+    # 9. Frame drop info: now from liblcvm, not pandas (already in lcvm_info)
+
+    # 10. Optionally, add ffprobe audio info if requested
     if config_dict.get("dump_audio_info", False):
         sample_rate, bitrate, duration = vtools_ffprobe.get_audio_info(infile)
-        keys.append("audio_sample_rate")
-        vals.append(sample_rate)
-        keys.append("audio_bitrate")
-        vals.append(bitrate)
-        keys.append("audio_duration_time")
-        vals.append(duration)
-    # return summary dataframe
-    df = pd.DataFrame(columns=keys)
-    df.loc[len(df.index)] = vals
-    return df
+        keys.extend(["audio_sample_rate_ffprobe", "audio_bitrate_ffprobe", "audio_duration_time_ffprobe"])
+        vals.extend([sample_rate, bitrate, duration])
+
+    # 11. Return summary dataframe
+    summary_df = pd.DataFrame([vals], columns=keys)
+    return summary_df
 
 
 # count frame dups (average, variance)
-# frame_dups_ratio: ratio of duplicated frames over the total
-# frame_dups_average_length: average length of a dup (in frame units)
 def get_frame_dups_info(df, frame_dups_psnr, debug):
     frame_total = len(df)
     frame_dups_list = list(df[df["psnr_y"] > frame_dups_psnr]["frame_num"])
     frame_dups = len(frame_dups_list)
-    frame_dups_ratio = frame_dups / frame_total
-    # get frame dup clumpiness factor
+    frame_dups_ratio = frame_dups / frame_total if frame_total > 0 else 0.0
     last_frame_num = None
     dup_length = 0
     dup_length_list = []
-    # TODO(chema): what if frame_dups_list = [..., 81, 83, 85, 87, ...]
     for frame_num in frame_dups_list:
-        if last_frame_num == None:
+        if last_frame_num is None:
             pass
         elif last_frame_num == frame_num - 1:
             dup_length += 1
@@ -212,7 +265,7 @@ def get_frame_dups_info(df, frame_dups_psnr, debug):
                     print(f"{frame_num=} {dup_length=}")
             dup_length = 0
         last_frame_num = frame_num
-    if frame_dups == 0:
+    if frame_dups == 0 or not dup_length_list:
         frame_dups_average_length = 0.0
     else:
         frame_dups_average_length = sum(dup_length_list) / len(dup_length_list)
@@ -220,90 +273,36 @@ def get_frame_dups_info(df, frame_dups_psnr, debug):
     return frame_dups_ratio, frame_dups_average_length, frame_dups_text_list
 
 
-# count frame drops (average, variance)
-# frame_drop_ratio: ratio of dropped frames over the total
-# frame_drop_average_length: average length of a drop (in frame units)
-def get_frame_drop_info(df, debug):
-    # 0. get the list of inter-frame timestamp distances.
-    # We are using as pandas Series as it has added functions.
-    frame_total = len(df)
-    col_name = None
-    if "pkt_duration_time_ms" in df.columns:
-        # ffprobe does a better job at decoding timestamps from stts
-        col_name = "pkt_duration_time_ms"
-    elif "delta_timestamp_ms" in df.columns:
-        col_name = "delta_timestamp_ms"
-    assert col_name is not None, "error: need a column with frame timestamps"
-    delta_timestamp_ms_series = df[col_name]
-    # 1. calculate the median inter-frame distance
-    delta_timestamp_ms_median = delta_timestamp_ms_series.median()
-    # 2. calculate the threshold to consider frame drop: This should be 2
-    # times the median, minus a factor
-    FACTOR = 0.75
-    delta_timestamp_ms_threshold = delta_timestamp_ms_median * FACTOR * 2
-    # 3. get the list of all the drops (absolute inter-frame values)
-    drop_length_list = list(
-        delta_timestamp_ms_series[
-            delta_timestamp_ms_series > delta_timestamp_ms_threshold
-        ]
-    )
-    # drop_length_list: [66.68900000000022, 100.25600000000168, ...]
-    # 4. sum all the drops, but adding only the length over 1x frame time
-    frame_drop_duration = sum(drop_length_list) - delta_timestamp_ms_median * len(
-        drop_length_list
-    )
-    # frame_drop_duration: sum([33.35900000000022, 66.92600000000168, ...])
-    # 5. get the total duration as the sum of all the inter-frame distances
-    total_duration = sum(delta_timestamp_ms_series[1:])
-    # 6. calculate frame drop ratio as extra drop length over total duration
-    frame_drop_ratio = frame_drop_duration / total_duration
-    # 7. calculate average drop length, normalized to framerate. Note that
-    # a single frame drop is a normalized frame drop length of 2. When
-    # frame drops are uncorrelated, the normalized average drop length
-    # should be close to 2
-    normalized_frame_drop_average_length = 0.0
-    if drop_length_list:
-        frame_drop_average_length = sum(drop_length_list) / len(drop_length_list)
-        normalized_frame_drop_average_length = (
-            frame_drop_average_length / delta_timestamp_ms_median
-        )
-    frame_drop_text_list = " ".join(
-        str(drop_length) for drop_length in drop_length_list
-    )
-    return frame_drop_ratio, normalized_frame_drop_average_length, frame_drop_text_list
-
-
 def run_frame_analysis(infile_list, outfile, the_filter, config_dict, debug):
-    # multiple infiles only supported in summary mode
     assert (
         len(infile_list) == 1 or the_filter == "summary"
     ), "error: multiple infiles only supported in summary mode"
-
-    # process input files
-    df_list = []
-    for infile in infile_list:
-        df = process_file(
-            infile,
-            config_dict,
-            debug,
-        )
-        # implement summary mode
-        if the_filter == "summary":
-            df = summarize(infile, df, config_dict, debug)
-        df_list.append(df)
-
     if the_filter == "summary":
-        # coalesce summary entries
-        df = None
-        for tmp_df in df_list:
-            df = tmp_df if df is None else pd.concat([df, tmp_df])
+        # Use liblcvm for all files
+        summary_list = []
+        for infile in infile_list:
+            try:
+                summary = get_liblcvm_full_summary(infile)
+                summary_list.append(summary)
+            except Exception as e:
+                if debug > 0:
+                    print(f"liblcvm error for {infile}: {e}")
+        df = pd.DataFrame(summary_list)
+        df.to_csv(outfile, index=False)
     else:
+        # Per-frame analysis: keep old logic
+        df_list = []
+        for infile in infile_list:
+            df = process_file(
+                infile,
+                config_dict,
+                debug,
+            )
+            df_list.append(df)
         df = df_list[0]
-    # write up to output file
-    df.to_csv(outfile, index=False)
+        df.to_csv(outfile, index=False)
 
 
-# process input
 def process_file(
     infile,
     config_dict,
@@ -313,13 +312,11 @@ def process_file(
     if debug > 1:
         for key in vtools_common.CONFIG_KEY_LIST:
             print(f'config_dict["{key}"]: {config_dict[key]}')
-
     # run opencv analysis
     if config_dict["add_opencv_analysis"]:
         opencv_df = vtools_opencv.run_opencv_analysis(
             infile, config_dict["add_mse"], config_dict["mse_delta"], debug
         )
-        # join 2x dataframes
         df = (
             opencv_df
             if df is None
@@ -329,11 +326,9 @@ def process_file(
         )
         duplicated_columns = list(k for k in df.keys() if k.endswith("_remove"))
         df.drop(columns=duplicated_columns, inplace=True)
-
     # add other sources of information
     if config_dict["add_ffprobe_frames"]:
         ffprobe_df = vtools_ffprobe.get_frames_information(infile, config_dict, debug)
-        # join 2x dataframes
         df = (
             ffprobe_df
             if df is None
@@ -343,11 +338,9 @@ def process_file(
         )
         duplicated_columns = list(k for k in df.keys() if k.endswith("_remove"))
         df.drop(columns=duplicated_columns, inplace=True)
-
     if config_dict["add_qp"]:
         qp_df = vtools_ffprobe.get_frames_qp_information(infile, config_dict, debug)
         if qp_df is not None:
-            # join 2x dataframes
             df = (
                 qp_df
                 if df is None
@@ -357,10 +350,8 @@ def process_file(
             )
             duplicated_columns = list(k for k in df.keys() if k.endswith("_remove"))
             df.drop(columns=duplicated_columns, inplace=True)
-
     if config_dict["add_mb_type"]:
         mb_df = vtools_ffprobe.get_frames_mb_information(infile, config_dict, debug)
-        # join 2x dataframes
         df = (
             mb_df
             if df is None
@@ -370,8 +361,6 @@ def process_file(
         )
         duplicated_columns = list(k for k in df.keys() if k.endswith("_remove"))
         df.drop(columns=duplicated_columns, inplace=True)
-
-    # fix the column types
     df = df.astype({"frame_num": int})
     return df
 
@@ -604,17 +593,33 @@ def get_config_dict(options):
 
 
 def main(argv):
-    # parse options
+    # Parse options
     options = get_options(argv)
-    # get outfile
+    # Set output file
     if options.outfile == "-" or options.outfile is None:
         options.outfile = "/dev/fd/1"
-    # print results
+    # Print options if debugging
     if options.debug > 0:
         print(options)
-
     config_dict = get_config_dict(options)
-    if options.filter in ("frames", "summary"):
+    if options.filter == "summary":
+        # liblcvm-only summary mode
+        summary_rows = []
+        for infile in options.infile_list:
+            try:
+                row = get_liblcvm_summary_info(infile)
+                summary_rows.append(row)
+            except Exception as e:
+                print(f"liblcvm error for {infile}: {e}")
+        if summary_rows:
+            import csv
+            with open(options.outfile, "w", newline="") as f:
+                writer = csv.DictWriter(f, fieldnames=summary_rows[0].keys())
+                writer.writeheader()
+                for row in summary_rows:
+                    writer.writerow(row)
+    elif options.filter == "frames":
+        # Per-frame analysis: keep old logic
         run_frame_analysis(
             options.infile_list,
             options.outfile,
@@ -622,7 +627,8 @@ def main(argv):
             config_dict,
             options.debug,
         )
-
+    else:
+        print(f"Unknown filter: {options.filter}")
 
 if __name__ == "__main__":
     # at least the CLI program name: (CLI) execution
