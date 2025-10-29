@@ -5,13 +5,15 @@ Analyzes a series of video files.
 import argparse
 import importlib
 import math
-import numpy as np
 import os
-import pandas as pd
 import sys
+
+import numpy as np
+import pandas as pd
 
 # Import liblcvm (pybind11 bindings)
 sys.path.append(os.path.join(os.path.dirname(__file__), "..", "build", "lib", "liblcvm"))
+
 import liblcvm
 
 vtools_common = importlib.import_module("vtools-common")
@@ -43,6 +45,7 @@ default_values = {
     "infile_list": [],
     "outfile": None,
     "dump_audio_info": False,
+    "policy_file": None,
 }
 SUMMARY_FIELDS_SINGLE = (
     "pix_fmt",
@@ -89,8 +92,13 @@ SUMMARY_FIELDS_AVERAGE = (
 )
 
 
-def get_liblcvm_summary_info(infile):
+def get_liblcvm_summary_info(infile, policy_file=None):
     config = liblcvm.LiblcvmConfig()
+    policy_content = None
+    if policy_file:
+        # Read policy file content
+        with open(policy_file, "r") as f:
+            policy_content = f.read()
     info = liblcvm.parse(infile, config)
     frame = info.get_frame()
     timing = info.get_timing()
@@ -101,7 +109,7 @@ def get_liblcvm_summary_info(infile):
         "bitrate_bps": frame.get_bitrate_bps(),
         "width": frame.get_width(),
         "height": frame.get_height(),
-        "type": frame.get_type(),
+        "video_codec_type": frame.get_video_codec_type(),
         "horizresolution": frame.get_horizresolution(),
         "vertresolution": frame.get_vertresolution(),
         "depth": frame.get_depth(),
@@ -153,7 +161,6 @@ def get_liblcvm_summary_info(infile):
     }
     # Top-level fields
     top_fields = {
-        "infile": infile,
         "filename": info.get_filename(),
     }
     # Merge all fields
@@ -162,6 +169,41 @@ def get_liblcvm_summary_info(infile):
     all_fields.update(frame_fields)
     all_fields.update(timing_fields)
     all_fields.update(audio_fields)
+
+    # Run policy checks if policy was provided
+    policy_fields = {}
+    if policy_content:
+        try:
+            # Prepare keys and values for policy runner
+            # Filter out list/array fields - policy runner only accepts scalar values
+            keys = []
+            vals = []
+            for key, value in all_fields.items():
+                # Skip list fields
+                if isinstance(value, (list, np.ndarray)):
+                    continue
+                keys.append(key)
+                vals.append(value)
+
+            # Call policy_runner
+            result, warn_list, error_list, version = liblcvm.policy_runner(
+                policy_content, keys, vals
+            )
+
+            # Add policy results to fields
+            policy_fields = {
+                "policy_version": version,
+                "warn_list": "; ".join(warn_list) if warn_list else "",
+                "error_list": "; ".join(error_list) if error_list else "",
+            }
+        except Exception as e:
+            policy_fields = {
+                "policy_version": "",
+                "warn_list": "",
+                "error_list": f"Policy execution failed: {str(e)}",
+            }
+
+    all_fields.update(policy_fields)
     return all_fields
 
 
@@ -574,6 +616,15 @@ def get_options(argv):
         help="Do not dump audio information%s"
         % (" [default]" if not default_values["dump_audio_info"] else ""),
     )
+    parser.add_argument(
+        "-p",
+        "--policy",
+        dest="policy_file",
+        type=str,
+        default=default_values["policy_file"],
+        metavar="policy-file",
+        help="policy file for video quality checks (requires liblcvm built with ADD_POLICY=ON)",
+    )
 
     # do the parsing
     options = parser.parse_args(argv[1:])
@@ -607,12 +658,13 @@ def main(argv):
         summary_rows = []
         for infile in options.infile_list:
             try:
-                row = get_liblcvm_summary_info(infile)
+                row = get_liblcvm_summary_info(infile, options.policy_file)
                 summary_rows.append(row)
             except Exception as e:
                 print(f"liblcvm error for {infile}: {e}")
         if summary_rows:
             import csv
+
             with open(options.outfile, "w", newline="") as f:
                 writer = csv.DictWriter(f, fieldnames=summary_rows[0].keys())
                 writer.writeheader()
@@ -629,6 +681,7 @@ def main(argv):
         )
     else:
         print(f"Unknown filter: {options.filter}")
+
 
 if __name__ == "__main__":
     # at least the CLI program name: (CLI) execution
