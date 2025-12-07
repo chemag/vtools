@@ -5,6 +5,7 @@
 Module that contains common code.
 """
 
+import shlex
 import subprocess
 import sys
 
@@ -37,7 +38,21 @@ def run(command, **kwargs):
     close_fds = kwargs.get("close_fds", default_close_fds)
     shell = type(command) in (type(""), type(""))
     if debug > 0:
-        print(f"running $ {command}")
+        if shell:
+            cmd_str = command
+        else:
+            # Custom quoting: use double quotes for args with single quotes,
+            # single quotes for args with spaces/special chars, unquoted otherwise
+            def quote_arg(arg):
+                if "'" in arg:
+                    # Use double quotes if arg contains single quotes
+                    escaped = arg.replace('\\', '\\\\').replace('"', '\\"').replace('$', '\\$')
+                    return f'"{escaped}"'
+                elif ' ' in arg or any(c in arg for c in '"\\$`!&|;<>(){}[]*?~'):
+                    return f"'{arg}'"
+                return arg
+            cmd_str = ' '.join(quote_arg(a) for a in command)
+        print(f"running $ {cmd_str}")
     if dry_run:
         return 0, b"stdout", b"stderr"
     p = subprocess.Popen(
