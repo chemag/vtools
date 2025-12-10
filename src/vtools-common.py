@@ -46,12 +46,17 @@ def run(command, **kwargs):
             def quote_arg(arg):
                 if "'" in arg:
                     # Use double quotes if arg contains single quotes
-                    escaped = arg.replace('\\', '\\\\').replace('"', '\\"').replace('$', '\\$')
+                    escaped = (
+                        arg.replace("\\", "\\\\")
+                        .replace('"', '\\"')
+                        .replace("$", "\\$")
+                    )
                     return f'"{escaped}"'
-                elif ' ' in arg or any(c in arg for c in '"\\$`!&|;<>(){}[]*?~'):
+                elif " " in arg or any(c in arg for c in '"\\$`!&|;<>(){}[]*?~'):
                     return f"'{arg}'"
                 return arg
-            cmd_str = ' '.join(quote_arg(a) for a in command)
+
+            cmd_str = " ".join(quote_arg(a) for a in command)
         print(f"running $ {cmd_str}")
     if dry_run:
         return 0, b"stdout", b"stderr"

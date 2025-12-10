@@ -38,6 +38,32 @@ def run_mp4box_command(infile, outfile=None, **kwargs):
     return outfile
 
 
+def sanitize_xml(content):
+    """Remove invalid XML characters from content.
+
+    Args:
+        content: String containing XML content
+
+    Returns:
+        Sanitized string with invalid XML characters removed
+    """
+
+    # Valid XML 1.0 characters:
+    # #x9 | #xA | #xD | [#x20-#xD7FF] | [#xE000-#xFFFD] | [#x10000-#x10FFFF]
+    def is_valid_xml_char(c):
+        codepoint = ord(c)
+        return (
+            codepoint == 0x9
+            or codepoint == 0xA
+            or codepoint == 0xD
+            or (0x20 <= codepoint <= 0xD7FF)
+            or (0xE000 <= codepoint <= 0xFFFD)
+            or (0x10000 <= codepoint <= 0x10FFFF)
+        )
+
+    return "".join(c for c in content if is_valid_xml_char(c))
+
+
 def parse_xml_file(xml_path):
     """Parse the MP4Box XML output file.
 
@@ -47,8 +73,12 @@ def parse_xml_file(xml_path):
     Returns:
         Tuple of (root element, list of TrackBox elements)
     """
-    tree = ET.parse(xml_path)
-    root = tree.getroot()
+    # Read and sanitize the XML content to handle invalid characters
+    with open(xml_path, "r", encoding="utf-8", errors="replace") as f:
+        content = f.read()
+    content = sanitize_xml(content)
+
+    root = ET.fromstring(content)
     tracks = root.findall(".//mp4:TrackBox", NS)
     return root, tracks
 
