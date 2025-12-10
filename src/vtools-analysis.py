@@ -12,7 +12,9 @@ import numpy as np
 import pandas as pd
 
 # Import liblcvm (pybind11 bindings)
-sys.path.append(os.path.join(os.path.dirname(__file__), "..", "build", "lib", "liblcvm"))
+sys.path.append(
+    os.path.join(os.path.dirname(__file__), "..", "build", "lib", "liblcvm")
+)
 
 import liblcvm
 
@@ -270,7 +272,9 @@ def summarize(infile, df, config_dict, debug):
         frame_dups_ratio, frame_dups_average_length, frame_dups_text_list = (
             get_frame_dups_info(df, config_dict["frame_dups_psnr"], debug)
         )
-        keys.extend(["frame_dups_ratio", "frame_dups_average_length", "frame_dups_text_list"])
+        keys.extend(
+            ["frame_dups_ratio", "frame_dups_average_length", "frame_dups_text_list"]
+        )
         vals.extend([frame_dups_ratio, frame_dups_average_length, frame_dups_text_list])
 
     # 9. Frame drop info: now from liblcvm, not pandas (already in lcvm_info)
@@ -278,7 +282,13 @@ def summarize(infile, df, config_dict, debug):
     # 10. Optionally, add ffprobe audio info if requested
     if config_dict.get("dump_audio_info", False):
         sample_rate, bitrate, duration = vtools_ffprobe.get_audio_info(infile)
-        keys.extend(["audio_sample_rate_ffprobe", "audio_bitrate_ffprobe", "audio_duration_time_ffprobe"])
+        keys.extend(
+            [
+                "audio_sample_rate_ffprobe",
+                "audio_bitrate_ffprobe",
+                "audio_duration_time_ffprobe",
+            ]
+        )
         vals.extend([sample_rate, bitrate, duration])
 
     # 11. Return summary dataframe
