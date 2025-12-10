@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 
-"""vtools-mp4box.py: A wrapper around MP4Box for ISOBMFF analysis."""
+"""vtools-analysis-other.py: Duration analysis using MP4Box and ffprobe."""
 
 
 import argparse
@@ -245,6 +245,154 @@ def get_stts_info(root, tracks, debug=0):
     return result
 
 
+# Audio codec samples per frame mapping
+AUDIO_SAMPLES_PER_FRAME = {
+    # AAC variants
+    ("aac", "LC"): 1024,
+    ("aac", "HE-AAC"): 2048,
+    ("aac", "HE-AACv2"): 2048,
+    ("aac", "LD"): 480,
+    ("aac", "ELD"): 480,
+    # MP3
+    ("mp3", None): 1152,
+    # Opus
+    ("opus", None): 960,  # default, can vary
+    # FLAC (variable, use 4096 as typical)
+    ("flac", None): 4096,
+    # PCM (1 sample per frame)
+    ("pcm_s16le", None): 1,
+    ("pcm_s24le", None): 1,
+    ("pcm_s32le", None): 1,
+    ("pcm_f32le", None): 1,
+}
+
+
+def get_samples_per_frame(codec_name, profile):
+    """Get the number of samples per frame for an audio codec.
+
+    Args:
+        codec_name: Audio codec name (e.g., "aac", "mp3")
+        profile: Audio profile (e.g., "LC", "HE-AAC")
+
+    Returns:
+        Number of samples per frame, or None if unknown
+    """
+    # Try exact match first
+    key = (codec_name.lower() if codec_name else None, profile)
+    if key in AUDIO_SAMPLES_PER_FRAME:
+        return AUDIO_SAMPLES_PER_FRAME[key]
+
+    # Try without profile
+    key = (codec_name.lower() if codec_name else None, None)
+    if key in AUDIO_SAMPLES_PER_FRAME:
+        return AUDIO_SAMPLES_PER_FRAME[key]
+
+    return None
+
+
+def run_ffprobe_stream_info(infile, stream_type, stream_index=0, **kwargs):
+    """Run ffprobe to get stream information.
+
+    Args:
+        infile: Input file path
+        stream_type: Stream type ('v' for video, 'a' for audio)
+        stream_index: Stream index (default 0)
+        **kwargs: Additional options (debug, ffprobe binary path)
+
+    Returns:
+        Dictionary with stream info, or None if stream doesn't exist
+    """
+    ffprobe_bin = kwargs.get("ffprobe", "ffprobe")
+    debug = kwargs.get("debug", 0)
+
+    stream_specifier = f"{stream_type}:{stream_index}"
+    command = (
+        f"{ffprobe_bin} -v error -count_frames "
+        f"-select_streams {stream_specifier} "
+        f"-show_entries stream=codec_name,profile,sample_rate,nb_read_frames "
+        f"-of json '{infile}'"
+    )
+
+    returncode, out, err = vtools_common.run(command, debug=debug)
+    if returncode != 0:
+        if debug > 0:
+            print(f"ffprobe error for {stream_specifier}: {err}")
+        return None
+
+    try:
+        data = json.loads(out)
+        streams = data.get("streams", [])
+        if not streams:
+            return None
+        return streams[0]
+    except json.JSONDecodeError:
+        return None
+
+
+def get_ffprobe_info(infile, **kwargs):
+    """Get duration information from ffprobe for all streams.
+
+    Args:
+        infile: Input file path
+        **kwargs: Additional options (debug)
+
+    Returns:
+        Dictionary with ffprobe duration information
+    """
+    debug = kwargs.get("debug", 0)
+    result = {"streams": []}
+
+    # Get video stream info
+    video_info = run_ffprobe_stream_info(infile, "v", 0, debug=debug)
+    if video_info:
+        nb_frames = int(video_info.get("nb_read_frames", 0))
+        # For video, duration in seconds needs frame rate which we don't have here
+        # Just report frame count
+        result["streams"].append(
+            {
+                "stream_type": "video",
+                "codec_name": video_info.get("codec_name", ""),
+                "profile": video_info.get("profile", ""),
+                "nb_read_frames": nb_frames,
+                "duration_sec": 0,  # Would need framerate to calculate
+            }
+        )
+
+    # Get audio stream info
+    audio_info = run_ffprobe_stream_info(infile, "a", 0, debug=debug)
+    if audio_info:
+        codec_name = audio_info.get("codec_name", "")
+        profile = audio_info.get("profile", "")
+        nb_frames = int(audio_info.get("nb_read_frames", 0))
+        sample_rate = int(audio_info.get("sample_rate", 0))
+
+        samples_per_frame = get_samples_per_frame(codec_name, profile)
+        duration_samples = None
+        duration_sec = 0
+
+        if samples_per_frame and nb_frames > 0:
+            duration_samples = nb_frames * samples_per_frame
+            if sample_rate > 0:
+                duration_sec = duration_samples / sample_rate
+
+        stream_data = {
+            "stream_type": "audio",
+            "codec_name": codec_name,
+            "profile": profile,
+            "nb_read_frames": nb_frames,
+            "sample_rate": sample_rate,
+            "duration_sec": duration_sec,
+        }
+        if samples_per_frame:
+            stream_data["samples_per_frame"] = samples_per_frame
+        if duration_samples:
+            stream_data["duration_samples"] = duration_samples
+
+        result["streams"].append(stream_data)
+
+    return result
+
+
 def write_output(data, outfile, output_format):
     """Write data to output file in the specified format.
 
@@ -271,86 +419,125 @@ def format_duration_text(data):
     """Format summary data as flat key: value text.
 
     Args:
-        data: Summary dictionary from build_summary()
+        data: Summary dictionary from build_combined_summary()
 
     Returns:
         Formatted text string
     """
     lines = []
 
-    # Movie-level info
-    if data.get("movie"):
-        movie = data["movie"]
-        lines.append(f"movie_timescale: {movie.get('timescale', 0)}")
-        lines.append(f"movie_duration_units: {movie.get('duration', 0)}")
-        lines.append(f"movie_duration_sec: {movie.get('duration_sec', 0)}")
-        lines.append("")
+    # MP4Box data
+    mp4box = data.get("mp4box", {})
+    if mp4box:
+        lines.append("# mp4box")
 
-    # Per-track info
-    for track in data.get("tracks", []):
-        track_type = track.get("track_type", "unknown")
-        prefix = f"trak_{track_type}"
+        # Movie-level info
+        movie = mp4box.get("movie", {})
+        if movie:
+            lines.append(f"mp4box_movie_timescale: {movie.get('timescale', 0)}")
+            lines.append(f"mp4box_movie_duration_units: {movie.get('duration', 0)}")
+            lines.append(f"mp4box_movie_duration_sec: {movie.get('duration_sec', 0)}")
+            lines.append("")
 
-        # mdhd
-        mdhd = track.get("mdhd", {})
-        if mdhd:
-            lines.append(f"{prefix}_mdhd_timescale: {mdhd.get('timescale', 0)}")
-            lines.append(f"{prefix}_mdhd_duration_units: {mdhd.get('duration', 0)}")
-            lines.append(f"{prefix}_mdhd_duration_sec: {mdhd.get('duration_sec', 0)}")
+        # Per-track info
+        for track in mp4box.get("tracks", []):
+            track_type = track.get("track_type", "unknown")
+            prefix = f"mp4box_trak_{track_type}"
 
-        # tkhd
-        tkhd = track.get("tkhd", {})
-        if tkhd:
-            lines.append(f"{prefix}_tkhd_duration_units: {tkhd.get('duration', 0)}")
-            lines.append(f"{prefix}_tkhd_duration_sec: {tkhd.get('duration_sec', 0)}")
-
-        # edts
-        edts = track.get("edts", {})
-        if edts:
-            lines.append(f"{prefix}_edts_duration_units: {edts.get('duration', 0)}")
-            lines.append(f"{prefix}_edts_duration_sec: {edts.get('duration_sec', 0)}")
-            for j, entry in enumerate(edts.get("elst", [])):
+            # mdhd
+            mdhd = track.get("mdhd", {})
+            if mdhd:
+                lines.append(f"{prefix}_mdhd_timescale: {mdhd.get('timescale', 0)}")
+                lines.append(f"{prefix}_mdhd_duration_units: {mdhd.get('duration', 0)}")
                 lines.append(
-                    f"{prefix}_edts_elst_{j}_duration_units: {entry.get('duration', 0)}"
-                )
-                lines.append(
-                    f"{prefix}_edts_elst_{j}_duration_sec: {entry.get('duration_sec', 0)}"
-                )
-                lines.append(
-                    f"{prefix}_edts_elst_{j}_media_time: {entry.get('media_time', 0)}"
-                )
-                lines.append(
-                    f"{prefix}_edts_elst_{j}_media_rate: {entry.get('media_rate', '1')}"
+                    f"{prefix}_mdhd_duration_sec: {mdhd.get('duration_sec', 0)}"
                 )
 
-        # stts
-        stts = track.get("stts", {})
-        if stts:
-            lines.append(
-                f"{prefix}_stts_sample_count_total: {stts.get('sample_count_total', 0)}"
-            )
-            lines.append(
-                f"{prefix}_stts_sample_delta_total: {stts.get('sample_delta_total', 0)}"
-            )
-            lines.append(
-                f"{prefix}_stts_sample_delta_average: {stts.get('sample_delta_average', 0)}"
-            )
-            lines.append(
-                f"{prefix}_stts_sample_delta_stddev: {stts.get('sample_delta_stddev', 0)}"
-            )
-            lines.append(f"{prefix}_stts_duration_sec: {stts.get('duration_sec', 0)}")
+            # tkhd
+            tkhd = track.get("tkhd", {})
+            if tkhd:
+                lines.append(f"{prefix}_tkhd_duration_units: {tkhd.get('duration', 0)}")
+                lines.append(
+                    f"{prefix}_tkhd_duration_sec: {tkhd.get('duration_sec', 0)}"
+                )
 
-        # mdhd_stts_mismatch
-        mismatch = track.get("mdhd_stts_mismatch", {})
-        if mismatch:
-            lines.append(
-                f"{prefix}_mdhd_stts_mismatch_diff_units: {mismatch.get('diff_units', 0)}"
-            )
-            lines.append(
-                f"{prefix}_mdhd_stts_mismatch_diff_sec: {mismatch.get('diff_sec', 0)}"
-            )
+            # edts
+            edts = track.get("edts", {})
+            if edts:
+                lines.append(f"{prefix}_edts_duration_units: {edts.get('duration', 0)}")
+                lines.append(
+                    f"{prefix}_edts_duration_sec: {edts.get('duration_sec', 0)}"
+                )
+                for j, entry in enumerate(edts.get("elst", [])):
+                    lines.append(
+                        f"{prefix}_edts_elst_{j}_duration_units: {entry.get('duration', 0)}"
+                    )
+                    lines.append(
+                        f"{prefix}_edts_elst_{j}_duration_sec: {entry.get('duration_sec', 0)}"
+                    )
+                    lines.append(
+                        f"{prefix}_edts_elst_{j}_media_time: {entry.get('media_time', 0)}"
+                    )
+                    lines.append(
+                        f"{prefix}_edts_elst_{j}_media_rate: {entry.get('media_rate', '1')}"
+                    )
 
-        lines.append("")
+            # stts
+            stts = track.get("stts", {})
+            if stts:
+                lines.append(
+                    f"{prefix}_stts_sample_count_total: {stts.get('sample_count_total', 0)}"
+                )
+                lines.append(
+                    f"{prefix}_stts_sample_delta_total: {stts.get('sample_delta_total', 0)}"
+                )
+                lines.append(
+                    f"{prefix}_stts_sample_delta_average: {stts.get('sample_delta_average', 0)}"
+                )
+                lines.append(
+                    f"{prefix}_stts_sample_delta_stddev: {stts.get('sample_delta_stddev', 0)}"
+                )
+                lines.append(
+                    f"{prefix}_stts_duration_sec: {stts.get('duration_sec', 0)}"
+                )
+
+            # mdhd_stts_mismatch
+            mismatch = track.get("mdhd_stts_mismatch", {})
+            if mismatch:
+                lines.append(
+                    f"{prefix}_mdhd_stts_mismatch_diff_units: {mismatch.get('diff_units', 0)}"
+                )
+                lines.append(
+                    f"{prefix}_mdhd_stts_mismatch_diff_sec: {mismatch.get('diff_sec', 0)}"
+                )
+
+            lines.append("")
+
+    # FFprobe data
+    ffprobe = data.get("ffprobe", {})
+    if ffprobe:
+        lines.append("# ffprobe")
+
+        for stream in ffprobe.get("streams", []):
+            stream_type = stream.get("stream_type", "unknown")
+            prefix = f"ffprobe_{stream_type}"
+
+            lines.append(f"{prefix}_codec_name: {stream.get('codec_name', '')}")
+            if stream.get("profile"):
+                lines.append(f"{prefix}_profile: {stream.get('profile', '')}")
+            lines.append(f"{prefix}_nb_read_frames: {stream.get('nb_read_frames', 0)}")
+            if stream.get("sample_rate"):
+                lines.append(f"{prefix}_sample_rate: {stream.get('sample_rate', 0)}")
+            if stream.get("samples_per_frame"):
+                lines.append(
+                    f"{prefix}_samples_per_frame: {stream.get('samples_per_frame', 0)}"
+                )
+            if stream.get("duration_samples"):
+                lines.append(
+                    f"{prefix}_duration_samples: {stream.get('duration_samples', 0)}"
+                )
+            lines.append(f"{prefix}_duration_sec: {stream.get('duration_sec', 0)}")
+            lines.append("")
 
     return "\n".join(lines)
 
@@ -432,18 +619,25 @@ def run_analysis(infile, outfile, filter_type, output_format, debug):
     # Step 2: Parse the XML
     root, tracks = parse_xml_file(xml_path)
 
-    # Step 3: Run the appropriate analysis
+    # Step 3: Get MP4Box analysis
     if filter_type == "durations":
-        durations = get_durations(root, tracks, debug)
-        write_output(durations, outfile, output_format)
+        mp4box_data = get_durations(root, tracks, debug)
     elif filter_type == "stts":
-        stts_info = get_stts_info(root, tracks, debug)
-        write_output(stts_info, outfile, output_format)
+        mp4box_data = get_stts_info(root, tracks, debug)
     elif filter_type == "summary":
         durations = get_durations(root, tracks, debug)
         stts_info = get_stts_info(root, tracks, debug)
-        summary = build_summary(durations, stts_info)
-        write_output(summary, outfile, output_format)
+        mp4box_data = build_summary(durations, stts_info)
+
+    # Step 4: Get ffprobe analysis
+    ffprobe_data = get_ffprobe_info(infile, debug=debug)
+
+    # Step 5: Combine and output
+    combined = {
+        "mp4box": mp4box_data,
+        "ffprobe": ffprobe_data,
+    }
+    write_output(combined, outfile, output_format)
 
 
 def get_options(argv):
