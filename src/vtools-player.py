@@ -7,17 +7,13 @@ Can also show waveform if audio is present.
 
 import argparse
 import asyncio
-import csv
 import cv2
 import importlib
 import math
 import numpy as np
-import os
-import re
 import soundfile
 import sys
 import tempfile
-import threading
 import timeit
 
 

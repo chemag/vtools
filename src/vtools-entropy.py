@@ -8,7 +8,6 @@ import importlib
 import math
 import numpy as np
 import pandas as pd
-import re
 import sys
 
 vtools_pyav = importlib.import_module("vtools-pyav")

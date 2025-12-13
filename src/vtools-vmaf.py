@@ -6,7 +6,6 @@
 import argparse
 import importlib
 import json
-import subprocess
 import sys
 import tempfile
 

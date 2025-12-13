@@ -8,7 +8,6 @@ Runs a generic filter using python ffmpeg to read the file.
 
 import argparse
 import ffmpeg
-import math
 import numpy as np
 import pandas as pd
 import re

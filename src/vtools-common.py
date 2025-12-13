@@ -5,7 +5,6 @@
 Module that contains common code.
 """
 
-import shlex
 import subprocess
 import sys
 
