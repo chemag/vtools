@@ -184,9 +184,21 @@ def run_analysis(infile, outfile, filter_type, output_format, debug):
         infile: Input MP4 file path
         outfile: Output file path
         filter_type: Type of analysis to run
-        output_format: Output format ("json" or "duration")
+        output_format: Output format ("json", "duration", or "xml")
         debug: Debug level
     """
+    # Handle XML mode separately - just output raw MP4Box XML
+    if output_format == "xml":
+        xml_path = vtools_analysis_mp4box.run_mp4box_command(infile, debug=debug)
+        with open(xml_path, "r", encoding="utf-8", errors="replace") as f:
+            xml_content = f.read()
+        if outfile == "-":
+            sys.stdout.write(xml_content)
+        else:
+            with open(outfile, "w") as f:
+                f.write(xml_content)
+        return
+
     # Get MP4Box analysis
     mp4box_data = vtools_analysis_mp4box.get_mp4box_info(infile, debug=debug)
 
@@ -290,6 +302,13 @@ def get_options(argv):
         dest="output_format",
         const="duration",
         help="output duration info as flat key: value text",
+    )
+    format_group.add_argument(
+        "--xml",
+        action="store_const",
+        dest="output_format",
+        const="xml",
+        help="output raw MP4Box XML",
     )
     parser.set_defaults(output_format=default_values["output_format"])
     # do the parsing
